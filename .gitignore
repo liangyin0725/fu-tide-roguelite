@@ -3,4 +3,5 @@ dist/
 .vite/
 .superpowers/
 *.log
+.vite-local.log
 .DS_Store
