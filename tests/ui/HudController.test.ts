@@ -143,6 +143,86 @@ describe('HudController', () => {
     expect(handlers.onStartBetaMode).toHaveBeenCalled();
   });
 
+  it('puts the language selector on the main menu and renders English copy immediately', () => {
+    const root = document.querySelector<HTMLElement>('#hud')!;
+    const handlers = callbacks();
+    const hud = new HudController(root, handlers);
+    const state = createDefaultState();
+    state.phase = 'menu';
+
+    hud.render(state, DEFAULT_GAME_SETTINGS, false);
+    root.querySelector<HTMLButtonElement>('[data-setting="language"][data-value="en"]')!.click();
+    expect(handlers.onChangeSetting).toHaveBeenCalledWith('language', 'en');
+
+    hud.render(state, { ...DEFAULT_GAME_SETTINGS, language: 'en' }, false);
+    expect(root.textContent).toContain('Begin Tribulation');
+  });
+
+  it('does not leave Chinese labels in the English run summary', () => {
+    const root = document.querySelector<HTMLElement>('#hud')!;
+    const hud = new HudController(root, callbacks());
+    const state = createDefaultState();
+    state.phase = 'lost';
+    state.player.level = 8;
+    state.kills = 42;
+    state.bossesDefeated = 1;
+
+    hud.render(state, { ...DEFAULT_GAME_SETTINGS, language: 'en' }, false);
+
+    expect(root.textContent).not.toMatch(/[\u4e00-\u9fff]/);
+  });
+
+  it('translates upgrade-card descriptions in English', () => {
+    const root = document.querySelector<HTMLElement>('#hud')!;
+    const hud = new HudController(root, callbacks());
+    const state = createDefaultState();
+    state.phase = 'upgrade';
+    state.upgradeChoices = ['frost-seal'];
+
+    hud.render(state, { ...DEFAULT_GAME_SETTINGS, language: 'en' }, false);
+
+    const card = root.querySelector<HTMLElement>('[data-upgrade="frost-seal"]')!;
+    expect(card.textContent).toContain('Frost Seal');
+    expect(card.querySelector('.upgrade-description')?.textContent).toBe('Slow Strength 0% → 12%（+12%）');
+  });
+
+  it('translates dynamic progression and tribulation data in English', () => {
+    const root = document.querySelector<HTMLElement>('#hud')!;
+    const hud = new HudController(root, callbacks());
+    const state = createDefaultState();
+    const english = { ...DEFAULT_GAME_SETTINGS, language: 'en' } as const;
+
+    state.phase = 'dongfu';
+    hud.render(state, english, false);
+    expect(root.querySelector('[data-talent="xuan-jian:sword-intent"]')?.textContent).toContain('Sword Intent');
+
+    state.phase = 'tribulation-choice';
+    state.tribulation = 'thunder';
+    state.tribulationChoices = ['thunder-conduit'];
+    hud.render(state, english, false);
+    const choice = root.querySelector<HTMLElement>('[data-tribulation-choice="thunder-conduit"]')!;
+    expect(choice.textContent).toContain('Thunder Conduit');
+    expect(choice.textContent).toContain('All damage +30%.');
+  });
+
+  it('translates awakening names and summaries in English', () => {
+    const root = document.querySelector<HTMLElement>('#hud')!;
+    const hud = new HudController(root, callbacks());
+    const state = createDefaultState();
+    state.phase = 'awakening';
+    state.awakeningNotice = {
+      upgrade: 'faster-swords',
+      skillName: '疾风飞剑',
+      awakeningName: '无间剑域',
+      summary: ['攻击间隔额外缩短 40%', '最低攻击间隔降至 120ms'],
+    };
+
+    hud.render(state, { ...DEFAULT_GAME_SETTINGS, language: 'en' }, false);
+
+    expect(root.textContent).toContain('Infinite Sword Domain');
+    expect(root.textContent).toContain('Attack interval reduced by an additional 40%.');
+  });
+
   it('lets beta players select skills and configure their levels before launch', () => {
     const root = document.querySelector<HTMLElement>('#hud')!;
     const handlers = callbacks();

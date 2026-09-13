@@ -77,7 +77,15 @@ describe('game settings', () => {
       aimMode: 'manual',
       musicVolume: 0.35,
       betaModeUnlocked: false,
+      language: 'zh-CN',
     });
+  });
+
+  it('persists the selected interface language', () => {
+    const storage = new MemoryStorage();
+    saveGameSettings(storage, { ...DEFAULT_GAME_SETTINGS, language: 'en' });
+
+    expect(loadGameSettings(storage).language).toBe('en');
   });
 
   it('scales simulation time for every supported speed', () => {

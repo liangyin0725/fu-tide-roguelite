@@ -81,6 +81,7 @@ export class GameScene extends Phaser.Scene {
 
   public create(): void {
     this.settings = loadGameSettings(window.localStorage);
+    document.documentElement.lang = this.settings.language;
     this.metaProgression = loadMetaProgression(window.localStorage);
     this.audio = new GameAudio();
     this.audio.setVolumes(this.settings.musicVolume, this.settings.soundVolume);
@@ -149,6 +150,7 @@ export class GameScene extends Phaser.Scene {
       onCloseBetaLoadout: () => { this.simulation.state.phase = 'menu'; },
       onChangeSetting: (key, value) => {
         this.settings = { ...this.settings, [key]: value } as GameSettings;
+        if (key === 'language') document.documentElement.lang = this.settings.language;
         saveGameSettings(window.localStorage, this.settings);
         this.audio.setVolumes(this.settings.musicVolume, this.settings.soundVolume);
       },

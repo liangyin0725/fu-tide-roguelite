@@ -1,10 +1,12 @@
 export type AimMode = 'auto' | 'manual';
+export type Language = 'zh-CN' | 'en';
 export type GameSpeed = 0.75 | 1 | 1.25;
 export type EffectLevel = 'low' | 'medium' | 'high';
 
 export interface GameSettings {
   version: 1;
   aimMode: AimMode;
+  language: Language;
   gameSpeed: GameSpeed;
   musicVolume: number;
   soundVolume: number;
@@ -20,6 +22,7 @@ export const SETTINGS_STORAGE_KEY = 'fu-tide-settings-v1';
 export const DEFAULT_GAME_SETTINGS: GameSettings = {
   version: 1,
   aimMode: 'auto',
+  language: 'zh-CN',
   gameSpeed: 1,
   musicVolume: 0.7,
   soundVolume: 0.8,
@@ -38,7 +41,11 @@ export function loadGameSettings(storage: Storage): GameSettings {
 
   try {
     const value = JSON.parse(raw) as Partial<GameSettings>;
-    const migrated = { ...value, betaModeUnlocked: value.betaModeUnlocked ?? false };
+    const migrated = {
+      ...value,
+      betaModeUnlocked: value.betaModeUnlocked ?? false,
+      language: value.language ?? 'zh-CN',
+    };
     if (!isValidSettings(migrated)) {
       return { ...DEFAULT_GAME_SETTINGS };
     }
@@ -63,6 +70,7 @@ export function scaleSimulationDelta(deltaMs: number, speed: GameSpeed): number 
 function isValidSettings(value: Partial<GameSettings>): value is GameSettings {
   return value.version === 1
     && (value.aimMode === 'auto' || value.aimMode === 'manual')
+    && (value.language === 'zh-CN' || value.language === 'en')
     && (value.gameSpeed === 0.75 || value.gameSpeed === 1 || value.gameSpeed === 1.25)
     && typeof value.musicVolume === 'number'
     && Number.isFinite(value.musicVolume)

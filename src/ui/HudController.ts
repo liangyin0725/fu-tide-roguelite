@@ -23,6 +23,7 @@ import { TRIBULATION_CHOICES } from '../sim/tribulationChoices';
 import { CHARACTERS, CHARACTER_IDS, STARTING_CHARACTER_IDS } from '../sim/characters';
 import { DAMAGE_SOURCE_NAMES } from '../sim/combatStats';
 import { createDefaultMetaProgression, PATH_NODES, RELIC_FORGE_COSTS, RELICS, TALENTS } from '../meta/metaProgression';
+import { localizeMarkup } from '../i18n/uiText';
 
 const OBJECTIVE_NAMES: Record<ObjectiveKind, string> = {
   'thunder-pillar': '破坏引雷天柱',
@@ -102,11 +103,11 @@ export class HudController {
     this.settings = settings;
     const showCombatHud = !['menu', 'dongfu', 'beta-loadout', 'lost'].includes(state.phase);
     const showLoadout = showCombatHud && !['character-choice', 'tribulation-choice', 'objective-route'].includes(state.phase);
-    const markup = [
+    const markup = localizeMarkup([
       showCombatHud ? this.renderTopBar(state) : '',
       showLoadout ? this.renderLoadout(state, settings) : '',
       settingsOpen ? this.renderSettings(settings) : this.renderOverlay(state, progression),
-    ].join('');
+    ].join(''), settings.language);
 
     if (markup !== this.lastMarkup && this.touchControl === null) {
       this.root.innerHTML = markup;
@@ -281,6 +282,7 @@ export class HudController {
           <button class="secondary-action" data-action="open-dongfu">洞府</button>
           ${this.settings.betaModeUnlocked ? '<button class="secondary-action" data-action="start-beta-mode">进入内测模式</button>' : ''}
           <button class="secondary-action" data-action="open-settings">设置</button>
+          ${segmentedSetting('语言', 'language', [['zh-CN', '中文'], ['en', 'EN']], this.settings.language)}
         </div>
       `;
     }
