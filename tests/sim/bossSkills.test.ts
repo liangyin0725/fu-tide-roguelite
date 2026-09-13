@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   getBossDisplayName,
+  getBossHazardTelegraphPattern,
   getBossTypeForWave,
   createBossPrimaryHazards,
   createBossSecondaryHazards,
@@ -36,6 +37,17 @@ describe('boss skills', () => {
     expect(getBossDisplayName('crimson')).toBe('赤煞劫主');
     expect(getBossDisplayName('thunder')).toBe('雷狱劫主');
     expect(getBossDisplayName('blood-moon')).toBe('血月劫主');
+  });
+
+  it('assigns a readable warning pattern to each boss identity', () => {
+    const base = makeBoss('crimson', 2, 1);
+    const crimson = createBossPrimaryHazards(base, { x: 500, y: 300 }, () => 1, () => 0.5)[0];
+    const thunder = createBossPrimaryHazards(makeBoss('thunder', 2, 1), { x: 500, y: 300 }, () => 2, () => 0.5)[0];
+    const moon = createBossPrimaryHazards(makeBoss('blood-moon', 2, 1), { x: 500, y: 300 }, () => 3, () => 0.5)[0];
+
+    expect(getBossHazardTelegraphPattern(crimson)).toBe('crimson-slash');
+    expect(getBossHazardTelegraphPattern(thunder)).toBe('thunder-mark');
+    expect(getBossHazardTelegraphPattern(moon)).toBe('blood-seal');
   });
 
   it('detects points inside circle, line, charge, and ring hazards', () => {

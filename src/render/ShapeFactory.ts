@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { getBossHazardRadius } from '../sim/bossSkills';
+import { getBossHazardRadius, getBossHazardTelegraphPattern } from '../sim/bossSkills';
 import { getGlyphFormation, getGlyphFormationPosition } from '../sim/glyphFormations';
 import type { BossHazard, BossType, EnemyProjectile, UpgradeId, UpgradeLevels } from '../sim/types';
 import { getAwakenedSkillGlyphs } from './awakeningVisuals';
@@ -280,12 +280,14 @@ export function drawBossHazard(
   const pulse = 0.55 + Math.sin(timeMs * 0.012 + hazard.id) * 0.18;
   const alpha = telegraph ? pulse : 0.88;
   const fillAlpha = telegraph ? 0.08 : 0.22;
+  const pattern = getBossHazardTelegraphPattern(hazard);
 
   if (hazard.kind === 'circle') {
     graphics.fillStyle(color, fillAlpha);
     graphics.fillCircle(hazard.x, hazard.y, hazard.radius);
     graphics.lineStyle(telegraph ? 3 : 7, color, alpha);
     graphics.strokeCircle(hazard.x, hazard.y, hazard.radius);
+    if (telegraph) drawBossTelegraphPattern(graphics, hazard, pattern, timeMs, alpha);
     return;
   }
 
@@ -295,6 +297,7 @@ export function drawBossHazard(
     graphics.strokeCircle(hazard.x, hazard.y, Math.max(1, radius));
     graphics.lineStyle(2, 0xffffff, telegraph ? alpha : 0.7);
     graphics.strokeCircle(hazard.x, hazard.y, Math.max(1, radius));
+    if (telegraph) drawBossTelegraphPattern(graphics, hazard, pattern, timeMs, alpha);
     return;
   }
 
@@ -302,6 +305,74 @@ export function drawBossHazard(
   graphics.lineBetween(hazard.x, hazard.y, hazard.endX, hazard.endY);
   graphics.lineStyle(telegraph ? 3 : 8, telegraph ? 0xffffff : color, alpha);
   graphics.lineBetween(hazard.x, hazard.y, hazard.endX, hazard.endY);
+  if (telegraph) drawBossTelegraphPattern(graphics, hazard, pattern, timeMs, alpha);
+}
+
+function drawBossTelegraphPattern(
+  graphics: Phaser.GameObjects.Graphics,
+  hazard: BossHazard,
+  pattern: import('../sim/bossSkills').BossTelegraphPattern,
+  timeMs: number,
+  alpha: number,
+): void {
+  if (pattern === 'thunder-mark') {
+    if (hazard.kind === 'circle') {
+      const radius = hazard.radius * 0.55;
+      graphics.lineStyle(3, 0xffffff, alpha * 0.84);
+      graphics.lineBetween(hazard.x - radius, hazard.y - radius, hazard.x + radius, hazard.y + radius);
+      graphics.lineBetween(hazard.x + radius, hazard.y - radius, hazard.x - radius, hazard.y + radius);
+      graphics.lineStyle(2, 0x61f5ff, alpha * 0.75);
+      graphics.strokeCircle(hazard.x, hazard.y, radius * 0.48);
+      return;
+    }
+    const dx = hazard.endX - hazard.x;
+    const dy = hazard.endY - hazard.y;
+    const length = Math.max(1, Math.hypot(dx, dy));
+    const px = -dy / length;
+    const py = dx / length;
+    for (const ratio of [0.2, 0.5, 0.8]) {
+      const x = hazard.x + dx * ratio;
+      const y = hazard.y + dy * ratio;
+      graphics.lineStyle(3, 0x61f5ff, alpha * 0.86);
+      graphics.lineBetween(x - px * 16, y - py * 16, x + px * 16, y + py * 16);
+    }
+    return;
+  }
+
+  const radius = hazard.kind === 'ring'
+    ? hazard.startRadius
+    : hazard.kind === 'circle'
+      ? hazard.radius
+      : 0;
+  if (pattern === 'blood-seal' && radius > 0) {
+    graphics.lineStyle(2, 0xffd1e5, alpha * 0.84);
+    graphics.strokeCircle(hazard.x, hazard.y, radius * 0.62);
+    graphics.strokeCircle(hazard.x, hazard.y, radius * 0.34);
+    for (let index = 0; index < 6; index += 1) {
+      const angle = index * Math.PI / 3 + timeMs * 0.001;
+      graphics.lineStyle(2, 0xff4fa3, alpha * 0.84);
+      graphics.lineBetween(
+        hazard.x + Math.cos(angle) * radius * 0.34,
+        hazard.y + Math.sin(angle) * radius * 0.34,
+        hazard.x + Math.cos(angle) * radius * 0.62,
+        hazard.y + Math.sin(angle) * radius * 0.62,
+      );
+    }
+    return;
+  }
+
+  const dx = hazard.endX - hazard.x;
+  const dy = hazard.endY - hazard.y;
+  const length = Math.max(1, Math.hypot(dx, dy));
+  const px = -dy / length;
+  const py = dx / length;
+  for (const ratio of [0.14, 0.36, 0.58, 0.8]) {
+    const x = hazard.x + dx * ratio;
+    const y = hazard.y + dy * ratio;
+    const slash = 16 + Math.sin(timeMs * 0.009 + ratio * 8) * 4;
+    graphics.lineStyle(4, 0xff8a3d, alpha * 0.9);
+    graphics.lineBetween(x - px * slash, y - py * slash, x + px * slash, y + py * slash);
+  }
 }
 
 export function drawProjectile(

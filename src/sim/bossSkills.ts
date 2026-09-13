@@ -197,6 +197,14 @@ export function getBossHazardRadius(hazard: BossHazard): number {
   return hazard.startRadius + (hazard.endRadius - hazard.startRadius) * clamp(progress, 0, 1);
 }
 
+export type BossTelegraphPattern = 'crimson-slash' | 'thunder-mark' | 'blood-seal';
+
+export function getBossHazardTelegraphPattern(hazard: BossHazard): BossTelegraphPattern {
+  if (hazard.bossType === 'thunder') return 'thunder-mark';
+  if (hazard.bossType === 'blood-moon') return 'blood-seal';
+  return 'crimson-slash';
+}
+
 export function isPointInsideBossHazard(hazard: BossHazard, point: Vector): boolean {
   if (hazard.kind === 'circle') {
     return Math.hypot(point.x - hazard.x, point.y - hazard.y) <= hazard.radius;
