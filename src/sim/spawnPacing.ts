@@ -20,6 +20,10 @@ export function getNextExperienceRequirement(previous: number, reachedLevel: num
   return Math.floor((previous * growthPercent + 400) / 100);
 }
 
+export function getBossWaveBeforeElapsed(elapsedMs: number): number {
+  return Math.max(0, Math.floor(Math.max(0, elapsedMs) / 300_000) - 1);
+}
+
 export function getBossStats(wave: number): BossStats {
   const growth = Math.max(0, wave - 1);
   return {

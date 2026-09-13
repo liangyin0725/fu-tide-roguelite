@@ -1,6 +1,6 @@
 import type { GlyphFormation } from './glyphFormations';
 
-export type GamePhase = 'menu' | 'dongfu' | 'character-choice' | 'active-choice' | 'beta-loadout' | 'playing' | 'upgrade' | 'treasure' | 'treasure-replace' | 'awakening' | 'tribulation-choice' | 'objective-route' | 'lost';
+export type GamePhase = 'menu' | 'dongfu' | 'character-choice' | 'coop-character-choice' | 'active-choice' | 'coop-active-choice' | 'beta-loadout' | 'playing' | 'upgrade' | 'treasure' | 'treasure-replace' | 'awakening' | 'tribulation-choice' | 'objective-route' | 'lost';
 
 export type UpgradeId =
   | 'faster-swords'
@@ -27,7 +27,10 @@ export type UpgradeId =
   | 'void-bell'
   | 'spirit-sword-rain'
   | 'storm-net'
-  | 'mirror-sigil';
+  | 'mirror-sigil'
+  | 'frost-domain'
+  | 'rift-return'
+  | 'star-pull';
 
 export type UpgradeLevels = Record<UpgradeId, number>;
 
@@ -40,6 +43,8 @@ export type BossObjectiveKind = 'crimson-anchor' | 'storm-pylon' | 'blood-well';
 export type EnemyArchetype = 'melee' | 'crossbow' | 'talisman' | 'soul-lamp';
 export type EliteAffix = 'iron-wall' | 'haste' | 'mender' | 'suppressor';
 export type TribulationType = 'calm' | 'thunder' | 'blood-moon' | 'frost';
+export type TribulationSealId = 'thunder' | 'blood' | 'frost';
+export type TribulationSealRanks = Record<TribulationSealId, number>;
 export type TribulationChoiceId =
   | 'thunder-conduit'
   | 'thunder-seal'
@@ -48,6 +53,7 @@ export type TribulationChoiceId =
   | 'frost-edge'
   | 'frost-ward';
 export type ObjectiveKind = 'thunder-pillar' | 'blood-well' | 'frost-core';
+export type ObjectiveFieldExpiresAtMs = Record<ObjectiveKind, number>;
 export type ObjectiveRouteId = 'secure' | 'risk';
 export type DamageSource =
   | 'flying-sword' | 'thunder' | 'chain' | 'fire' | 'orbit' | 'meteor'
@@ -98,11 +104,15 @@ export interface Vector {
   y: number;
 }
 
-export interface SimulationInput {
+export interface PlayerInput {
   move: Vector;
   aim: Vector;
   activate: boolean;
   aimMode?: 'auto' | 'manual';
+}
+
+export interface SimulationInput extends PlayerInput {
+  partner?: PlayerInput;
 }
 
 export interface Arena {
@@ -194,6 +204,22 @@ export interface Player {
   mirrorSigilDamage: number;
   mirrorSigilRadius: number;
   mirrorSigilChains: number;
+  frostDomainCooldownMs: number;
+  frostDomainTimerMs: number;
+  frostDomainRadius: number;
+  frostDomainDamage: number;
+  frostDomainFreezeMs: number;
+  riftReturnCooldownMs: number;
+  riftReturnTimerMs: number;
+  riftReturnDamage: number;
+  riftReturnRange: number;
+  riftReturnEchoes: number;
+  starPullCooldownMs: number;
+  starPullTimerMs: number;
+  starPullRadius: number;
+  starPullDamage: number;
+  starPullForce: number;
+  starPullBreaksBullets: boolean;
   activeBarrierRemainingMs: number;
   activeBarrierRadius: number;
   activeSkill: ActiveSkillId | null;
@@ -202,12 +228,29 @@ export interface Player {
   lastMoveDirection: Vector;
   equippedSkills: UpgradeId[];
   equippedEnhancements: UpgradeId[];
+  skillSlotLimit: number;
+  enhancementSlotLimit: number;
+  upgradeChoiceSalt: number;
   metaTalentIds: TalentId[];
   metaPathNodeIds: PathNodeId[];
   metaRelicIds: RelicId[];
   metaRelicForgeRanks: RelicForgeRanks;
   insightLevels: Record<InsightId, number>;
   upgradeLevels: UpgradeLevels;
+}
+
+export interface CoopPlayer extends Player {
+  id: 'p2';
+  downed: boolean;
+  downedUntilMs: number;
+  reviveProgressMs: number;
+}
+
+export interface CoopTarget {
+  id: 'p1' | 'p2';
+  x: number;
+  y: number;
+  downed: boolean;
 }
 
 export interface Enemy {
@@ -288,6 +331,12 @@ export interface EnemyProjectile {
   turnRate: number;
 }
 
+export interface FrostSealMirror {
+  x: number;
+  y: number;
+  expiresAtMs: number;
+}
+
 export type BossHazardKind = 'charge' | 'circle' | 'line' | 'ring';
 
 export interface BossHazard {
@@ -337,6 +386,10 @@ export interface GameState {
   tribulation: TribulationType;
   tribulationChoices: TribulationChoiceId[];
   activeTribulationChoiceId: TribulationChoiceId | null;
+  tribulationSealRanks: TribulationSealRanks;
+  thunderSealHits: number;
+  bloodSealEliteKills: number;
+  frostSealMirror: FrostSealMirror | null;
   nextTribulationChoiceAtMs: number;
   nextObjectiveAtMs: number;
   activeObjectiveId: number | null;
@@ -345,6 +398,7 @@ export interface GameState {
   objectiveChainTribulation: TribulationType | null;
   objectiveRoutePendingStep: 0 | 2 | 3;
   objectiveChainRiskLevel: number;
+  objectiveFieldExpiresAtMs: ObjectiveFieldExpiresAtMs;
   activeBossObjectiveId: number | null;
   bossObjectiveExpiresAtMs: number;
   resolvedBloodWellBossId: number | null;
@@ -356,6 +410,14 @@ export interface GameState {
   siegeActive: boolean;
   siegeEnemyCount: number;
   siegePulseTimerMs: number;
+  coopEnabled: boolean;
+  partner: CoopPlayer | null;
+  playerDowned: boolean;
+  playerDownedUntilMs: number;
+  playerReviveProgressMs: number;
+  coopUpgradeQueue: Array<'p1' | 'p2'>;
+  pendingUpgradePlayerId: 'p1' | 'p2';
+  lastCoopUpgradeChoices: UpgradeChoice[];
   player: Player;
   enemies: Enemy[];
   projectiles: Projectile[];
@@ -450,9 +512,12 @@ export type CombatEvent =
   | { type: 'star-volley'; x: number; y: number; count: number; awakened?: boolean }
   | { type: 'bullet-reprisal'; x: number; y: number; radius: number; awakened?: boolean; style?: 'mirror-sigil' | 'void-bell' }
   | { type: 'soul-pinned'; x: number; y: number; awakened: boolean }
+  | { type: 'frost-domain'; x: number; y: number; radius: number; awakened: boolean }
+  | { type: 'rift-return'; fromX: number; fromY: number; toX: number; toY: number; awakened: boolean }
+  | { type: 'star-pull'; x: number; y: number; radius: number; awakened: boolean }
   | { type: 'ranged-windup'; x: number; y: number; archetype: Exclude<EnemyArchetype, 'melee'> }
   | { type: 'enemy-bullet-fired'; x: number; y: number; archetype: Exclude<EnemyArchetype, 'melee'> }
-  | { type: 'enemy-bullet-broken'; x: number; y: number; by: 'blade' | 'barrier' | 'dash' }
+  | { type: 'enemy-bullet-broken'; x: number; y: number; by: 'blade' | 'barrier' | 'dash' | 'mirror' }
   | { type: 'active-skill-cast'; x: number; y: number; skill: ActiveSkillId; angle: number }
   | { type: 'active-skill-leveled'; x: number; y: number; skill: ActiveSkillId; level: number }
   | { type: 'elite-squad-spawned'; x: number; y: number; affix: EliteAffix; squadId: number }
@@ -460,6 +525,9 @@ export type CombatEvent =
   | { type: 'tribulation-changed'; x: number; y: number; tribulation: TribulationType }
   | { type: 'tribulation-choice-offered'; x: number; y: number; tribulation: Exclude<TribulationType, 'calm'> }
   | { type: 'tribulation-choice-selected'; x: number; y: number; choice: TribulationChoiceId }
+  | { type: 'tribulation-seal-gained'; x: number; y: number; seal: TribulationSealId; rank: number }
+  | { type: 'tribulation-seal-triggered'; x: number; y: number; seal: TribulationSealId }
   | { type: 'objective-spawned'; x: number; y: number; objective: ObjectiveKind; expiresAtMs: number }
   | { type: 'objective-resolved'; x: number; y: number; objective: ObjectiveKind; success: boolean }
+  | { type: 'objective-field-activated'; x: number; y: number; objective: ObjectiveKind; expiresAtMs: number }
   | { type: 'synergy-triggered'; x: number; y: number; synergy: SynergyId };

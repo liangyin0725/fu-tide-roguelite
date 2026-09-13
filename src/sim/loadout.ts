@@ -9,6 +9,12 @@ export function getEquippedForKind(player: Player, kind: UpgradeKind): UpgradeId
   return kind === 'skill' ? player.equippedSkills : player.equippedEnhancements;
 }
 
+export function getLoadoutSlotLimit(player: Player, kind: UpgradeKind): number {
+  return kind === 'skill'
+    ? player.skillSlotLimit ?? MAX_SKILL_SLOTS
+    : player.enhancementSlotLimit ?? MAX_ENHANCEMENT_SLOTS;
+}
+
 export function getAllEquipped(player: Player): UpgradeId[] {
   return [...player.equippedSkills, ...player.equippedEnhancements];
 }
@@ -16,7 +22,7 @@ export function getAllEquipped(player: Player): UpgradeId[] {
 export function canEquipUpgrade(player: Player, upgrade: UpgradeId): boolean {
   const kind = getUpgradeKind(upgrade);
   const equipped = getEquippedForKind(player, kind);
-  const limit = kind === 'skill' ? MAX_SKILL_SLOTS : MAX_ENHANCEMENT_SLOTS;
+  const limit = getLoadoutSlotLimit(player, kind);
   return equipped.includes(upgrade) || equipped.length < limit;
 }
 
@@ -128,6 +134,19 @@ function resetDerivedStats(player: Player): void {
   player.mirrorSigilDamage = 0;
   player.mirrorSigilRadius = 0;
   player.mirrorSigilChains = 0;
+  player.frostDomainCooldownMs = 0;
+  player.frostDomainRadius = 0;
+  player.frostDomainDamage = 0;
+  player.frostDomainFreezeMs = 0;
+  player.riftReturnCooldownMs = 0;
+  player.riftReturnDamage = 0;
+  player.riftReturnRange = 0;
+  player.riftReturnEchoes = 0;
+  player.starPullCooldownMs = 0;
+  player.starPullRadius = 0;
+  player.starPullDamage = 0;
+  player.starPullForce = 0;
+  player.starPullBreaksBullets = false;
 }
 
 export function applyUpgradeLevelEffects(player: Player, upgrade: UpgradeId, level: number): void {
@@ -248,6 +267,25 @@ export function applyUpgradeLevelEffects(player: Player, upgrade: UpgradeId, lev
       player.mirrorSigilDamage = skillAwakened ? 85 : [18, 26, 34, 42, 52][level - 1] ?? 0;
       player.mirrorSigilRadius = skillAwakened ? 220 : [105, 120, 140, 160, 180][level - 1] ?? 0;
       player.mirrorSigilChains = skillAwakened ? 2 : 0;
+      break;
+    case 'frost-domain':
+      player.frostDomainCooldownMs = skillAwakened ? 3600 : [7200, 6400, 5800, 5200, 4400][level - 1] ?? 0;
+      player.frostDomainRadius = skillAwakened ? 220 : [110, 130, 150, 170, 190][level - 1] ?? 0;
+      player.frostDomainDamage = skillAwakened ? 72 : [18, 26, 34, 42, 52][level - 1] ?? 0;
+      player.frostDomainFreezeMs = skillAwakened ? 950 : level >= 4 ? 420 : 0;
+      break;
+    case 'rift-return':
+      player.riftReturnCooldownMs = skillAwakened ? 3000 : [6800, 6000, 5300, 4600, 3800][level - 1] ?? 0;
+      player.riftReturnDamage = skillAwakened ? 86 : [24, 34, 44, 54, 66][level - 1] ?? 0;
+      player.riftReturnRange = skillAwakened ? 620 : [360, 410, 460, 510, 560][level - 1] ?? 0;
+      player.riftReturnEchoes = skillAwakened ? 2 : 0;
+      break;
+    case 'star-pull':
+      player.starPullCooldownMs = skillAwakened ? 3800 : [8500, 7400, 6500, 5600, 4800][level - 1] ?? 0;
+      player.starPullRadius = skillAwakened ? 230 : [120, 140, 160, 180, 200][level - 1] ?? 0;
+      player.starPullDamage = skillAwakened ? 96 : [24, 34, 44, 54, 66][level - 1] ?? 0;
+      player.starPullForce = skillAwakened ? 190 : [72, 92, 112, 132, 152][level - 1] ?? 0;
+      player.starPullBreaksBullets = skillAwakened;
       break;
   }
 }

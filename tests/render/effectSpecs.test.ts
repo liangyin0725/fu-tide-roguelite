@@ -87,6 +87,14 @@ describe('createEffectSpecs', () => {
     expect(specs.map((spec) => spec.kind)).toEqual(['tribulation-choice', 'tribulation-choice']);
   });
 
+  it('maps completed objective fields to a dedicated battlefield effect', () => {
+    const specs = createEffectSpecs([
+      { type: 'objective-field-activated', x: 120, y: 220, objective: 'frost-core', expiresAtMs: 18_000 },
+    ]);
+
+    expect(specs.map((spec) => spec.kind)).toEqual(['objective-field']);
+  });
+
   it('maps dao-yun rewards to a reward effect', () => {
     const specs = createEffectSpecs([
       { type: 'dao-yun-earned', x: 120, y: 220, wave: 1, amount: 1 },
@@ -137,6 +145,16 @@ describe('createEffectSpecs', () => {
     ]);
 
     expect(specs[0].durationMs).toBe(2300);
+  });
+
+  it('keeps awakened field, return, and pull skills on screen long enough to read their silhouettes', () => {
+    const specs = createEffectSpecs([
+      { type: 'frost-domain', x: 120, y: 220, radius: 160, awakened: true },
+      { type: 'rift-return', fromX: 10, fromY: 20, toX: 210, toY: 120, awakened: true },
+      { type: 'star-pull', x: 320, y: 180, radius: 200, awakened: true },
+    ]);
+
+    expect(specs.map((spec) => spec.durationMs)).toEqual([1180, 680, 1180]);
   });
 
   it('reserves every effect tier for critical attack warnings', () => {

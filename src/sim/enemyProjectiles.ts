@@ -3,6 +3,7 @@ import type {
   Enemy,
   EnemyProjectile,
   GameState,
+  Player,
   Vector,
 } from './types';
 import { hasSynergy } from './synergies';
@@ -72,7 +73,7 @@ export function updateRangedAttacks(
 export function updateEnemyProjectiles(
   state: GameState,
   deltaMs: number,
-  applyPlayerDamage: (amount: number) => void,
+  applyPlayerDamage: (amount: number, player?: Player | import('./types').CoopPlayer) => void,
   takeId: () => number = () => state.nextId++,
 ): CombatEvent[] {
   const events: CombatEvent[] = [];
@@ -91,14 +92,19 @@ export function updateEnemyProjectiles(
       state.runStats.bulletsBlocked += 1;
       events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: breakCause });
       triggerReprisal(state, bullet.x, bullet.y, events);
-      if (breakCause === 'blade' && hasSynergy(state.player, 'sword-ward')) {
+      if (breakCause === 'mirror') {
+        reflectProjectile(state, bullet, takeId);
+        events.push({ type: 'tribulation-seal-triggered', x: bullet.x, y: bullet.y, seal: 'frost' });
+      } else if (breakCause === 'blade' && hasSynergy(state.player, 'sword-ward')) {
         reflectProjectile(state, bullet, takeId);
         events.push({ type: 'synergy-triggered', x: bullet.x, y: bullet.y, synergy: 'sword-ward' });
       }
       continue;
     }
-    if (distance(bullet, state.player) <= bullet.radius + state.player.radius) {
-      applyPlayerDamage(bullet.damage);
+    const hitPlayer = getLivingPlayers(state)
+      .find((player) => distance(bullet, player) <= bullet.radius + player.radius);
+    if (hitPlayer) {
+      applyPlayerDamage(bullet.damage, hitPlayer);
       continue;
     }
     if (
@@ -138,7 +144,8 @@ function reflectProjectile(state: GameState, bullet: EnemyProjectile, takeId: ()
 }
 
 function createShot(state: GameState, enemy: Enemy, takeId: () => number): EnemyProjectile[] {
-  const targetAngle = Math.atan2(state.player.y - enemy.y, state.player.x - enemy.x);
+  const target = getNearestLivingPlayer(state, enemy);
+  const targetAngle = Math.atan2(target.y - enemy.y, target.x - enemy.x);
   const speedMultiplier = TRIBULATION_MODIFIERS[state.tribulation].enemyProjectileSpeed
     * getTribulationChoiceModifiers(state.activeTribulationChoiceId).enemyProjectileSpeed;
   if (enemy.archetype === 'talisman') {
@@ -182,7 +189,8 @@ function createBullet(
 function steerTowardPlayer(bullet: EnemyProjectile, state: GameState, deltaMs: number): void {
   const speed = Math.hypot(bullet.vx, bullet.vy);
   const current = Math.atan2(bullet.vy, bullet.vx);
-  const desired = Math.atan2(state.player.y - bullet.y, state.player.x - bullet.x);
+  const target = getNearestLivingPlayer(state, bullet);
+  const desired = Math.atan2(target.y - bullet.y, target.x - bullet.x);
   const difference = wrapAngle(desired - current);
   const maxTurn = bullet.turnRate * deltaMs / 1000;
   const angle = current + Math.max(-maxTurn, Math.min(maxTurn, difference));
@@ -190,11 +198,26 @@ function steerTowardPlayer(bullet: EnemyProjectile, state: GameState, deltaMs: n
   bullet.vy = Math.sin(angle) * speed;
 }
 
+function getLivingPlayers(state: GameState): Array<Player | import('./types').CoopPlayer> {
+  const players: Array<Player | import('./types').CoopPlayer> = state.playerDowned ? [] : [state.player];
+  if (state.partner && !state.partner.downed) players.push(state.partner);
+  return players.length > 0 ? players : [state.player];
+}
+
+function getNearestLivingPlayer(state: GameState, origin: Vector): Player | import('./types').CoopPlayer {
+  return getLivingPlayers(state)
+    .sort((left, right) => distance(left, origin) - distance(right, origin))[0];
+}
+
 function getBreakCause(
   state: GameState,
   bullet: EnemyProjectile,
-): 'blade' | 'barrier' | null {
+): 'blade' | 'barrier' | 'mirror' | null {
   const player = state.player;
+  const mirror = state.frostSealMirror;
+  if (mirror && state.elapsedMs < mirror.expiresAtMs && distance(bullet, mirror) <= bullet.radius + 38) {
+    return 'mirror';
+  }
   if (player.orbitingBladeCount > 0) {
     const angle = Math.atan2(bullet.y - player.y, bullet.x - player.x);
     const radiusDelta = Math.abs(distance(bullet, player) - player.orbitingBladeRadius);
@@ -208,6 +231,9 @@ function getBreakCause(
     ) return 'blade';
   }
   if (player.activeBarrierRemainingMs > 0 && distance(bullet, player) <= player.activeBarrierRadius) {
+    return 'barrier';
+  }
+  if (state.elapsedMs < state.objectiveFieldExpiresAtMs['frost-core'] && distance(bullet, player) <= 150) {
     return 'barrier';
   }
   return null;

@@ -1,5 +1,7 @@
 import {
   CONTACT_DAMAGE_COOLDOWN_MS,
+  COOP_ARENA_HEIGHT,
+  COOP_ARENA_WIDTH,
   PROJECTILE_SPEED,
   PROJECTILE_TTL_MS,
 } from './constants';
@@ -27,8 +29,7 @@ import {
 } from './bossSkills';
 import {
   getEquippedForKind,
-  MAX_ENHANCEMENT_SLOTS,
-  MAX_SKILL_SLOTS,
+  getLoadoutSlotLimit,
   recalculatePlayerBuild,
 } from './loadout';
 import { getUpgradeKind } from './upgradeCatalog';
@@ -54,6 +55,7 @@ import type {
   GameState,
   ObjectiveKind,
   ObjectiveRouteId,
+  Player,
   TribulationChoiceId,
   UpgradeId,
   UpgradeChoice,
@@ -76,27 +78,148 @@ export class GameSimulation {
     }
   }
 
+  public startLocalCoop(): void {
+    if (this.state.phase !== 'menu') return;
+    this.enableLocalCoop();
+    this.state.phase = 'character-choice';
+  }
+
   public chooseCharacter(character: import('./types').CharacterId): void {
-    if (this.state.phase !== 'character-choice') return;
-    this.state.player.characterId = character;
-    recalculatePlayerBuild(this.state.player);
-    this.state.player.hp = this.state.player.maxHp;
-    this.state.player.shield = this.state.player.maxShield;
-    this.state.phase = 'active-choice';
+    if (this.state.phase === 'character-choice') {
+      this.configureCharacter(this.state.player, character);
+      this.state.phase = this.state.coopEnabled ? 'coop-character-choice' : 'active-choice';
+    } else if (this.state.phase === 'coop-character-choice' && this.state.partner) {
+      this.configureCharacter(this.state.partner, character);
+      this.state.phase = 'active-choice';
+    }
   }
 
   public chooseActiveSkill(skill: ActiveSkillId): void {
-    if (this.state.phase !== 'active-choice') return;
-    this.state.player.activeSkill = skill;
-    this.state.player.activeSkillLevel = 1;
-    this.state.player.activeCooldownRemainingMs = 0;
-    this.state.phase = 'playing';
+    if (this.state.phase === 'active-choice') {
+      this.configureActiveSkill(this.state.player, skill);
+      this.state.phase = this.state.coopEnabled ? 'coop-active-choice' : 'playing';
+    } else if (this.state.phase === 'coop-active-choice' && this.state.partner) {
+      this.configureActiveSkill(this.state.partner, skill);
+      this.state.phase = 'playing';
+    }
   }
 
   public consumeEvents(): CombatEvent[] {
     const events = this.events;
     this.events = [];
     return events;
+  }
+
+  public enableLocalCoop(): void {
+    if (this.state.coopEnabled) return;
+    const player = this.state.player;
+    this.state.coopEnabled = true;
+    this.state.arena.width = COOP_ARENA_WIDTH;
+    this.state.arena.height = COOP_ARENA_HEIGHT;
+    player.skillSlotLimit = 4;
+    player.enhancementSlotLimit = 4;
+    this.state.partner = {
+      ...player,
+      id: 'p2',
+      characterId: null,
+      x: Math.min(this.state.arena.width - player.radius, player.x + 80),
+      y: player.y,
+      lastMoveDirection: { ...player.lastMoveDirection },
+      equippedSkills: [],
+      equippedEnhancements: [],
+      skillSlotLimit: 4,
+      enhancementSlotLimit: 4,
+      upgradeChoiceSalt: 0x9e3779b9,
+      metaTalentIds: [...player.metaTalentIds],
+      metaPathNodeIds: [...player.metaPathNodeIds],
+      metaRelicIds: [...player.metaRelicIds],
+      metaRelicForgeRanks: { ...player.metaRelicForgeRanks },
+      insightLevels: { ...player.insightLevels },
+      upgradeLevels: Object.fromEntries(
+        Object.keys(player.upgradeLevels).map((upgrade) => [upgrade, 0]),
+      ) as typeof player.upgradeLevels,
+      downed: false,
+      downedUntilMs: 0,
+      reviveProgressMs: 0,
+    };
+  }
+
+  public getNearestLivingPlayer(origin: Vector): import('./types').CoopTarget | null {
+    const targets: import('./types').CoopTarget[] = [{
+      id: 'p1', x: this.state.player.x, y: this.state.player.y, downed: this.state.playerDowned,
+    }];
+    if (this.state.partner) targets.push(this.state.partner);
+    return targets
+      .filter((target) => !target.downed)
+      .sort((left, right) => distance(left, origin) - distance(right, origin))[0] ?? null;
+  }
+
+  private getNearestLivingPlayerEntity(origin: Vector): Player | import('./types').CoopPlayer {
+    const players: Array<Player | import('./types').CoopPlayer> = this.state.playerDowned ? [] : [this.state.player];
+    if (this.state.partner && !this.state.partner.downed) players.push(this.state.partner);
+    return players.sort((left, right) => distance(left, origin) - distance(right, origin))[0] ?? this.state.player;
+  }
+
+  private configureCharacter(player: Player, character: import('./types').CharacterId): void {
+    player.characterId = character;
+    recalculatePlayerBuild(player);
+    player.hp = player.maxHp;
+    player.shield = player.maxShield;
+  }
+
+  private configureActiveSkill(player: Player, skill: ActiveSkillId): void {
+    player.activeSkill = skill;
+    player.activeSkillLevel = 1;
+    player.activeCooldownRemainingMs = 0;
+  }
+
+  private showNextCoopUpgradeOrResume(): void {
+    const nextPlayerId = this.state.coopUpgradeQueue.shift();
+    if (!nextPlayerId) {
+      this.state.phase = 'playing';
+      return;
+    }
+    const player = nextPlayerId === 'p2' ? this.state.partner : this.state.player;
+    if (!player) {
+      this.showNextCoopUpgradeOrResume();
+      return;
+    }
+    this.state.pendingUpgradePlayerId = nextPlayerId;
+    const excludedChoices = nextPlayerId === 'p2' ? this.state.lastCoopUpgradeChoices : [];
+    this.state.upgradeChoices = createUpgradeChoices(this.state, player, excludedChoices);
+    if (nextPlayerId === 'p1') this.state.lastCoopUpgradeChoices = [...this.state.upgradeChoices];
+    this.state.phase = this.state.upgradeChoices.length > 0 ? 'upgrade' : 'playing';
+  }
+
+  private updateCoopRevives(deltaMs: number): void {
+    const partner = this.state.partner;
+    if (!this.state.coopEnabled || !partner) return;
+    if (this.state.playerDowned && !partner.downed) {
+      this.state.playerReviveProgressMs = distance(this.state.player, partner) <= 54
+        ? this.state.playerReviveProgressMs + deltaMs
+        : 0;
+      if (this.state.playerReviveProgressMs >= 3_000) {
+        this.state.playerDowned = false;
+        this.state.playerDownedUntilMs = 0;
+        this.state.playerReviveProgressMs = 0;
+        this.state.player.hp = this.state.player.maxHp * 0.35;
+        this.state.player.invulnerableMs = 1_200;
+        this.events.push({ type: 'player-healed', x: this.state.player.x, y: this.state.player.y, amount: this.state.player.hp, source: 'life-drain' });
+      }
+    }
+    if (partner.downed && !this.state.playerDowned) {
+      partner.reviveProgressMs = distance(this.state.player, partner) <= 54
+        ? partner.reviveProgressMs + deltaMs
+        : 0;
+      if (partner.reviveProgressMs >= 3_000) {
+        partner.downed = false;
+        partner.downedUntilMs = 0;
+        partner.reviveProgressMs = 0;
+        partner.hp = partner.maxHp * 0.35;
+        partner.invulnerableMs = 1_200;
+        this.events.push({ type: 'player-healed', x: partner.x, y: partner.y, amount: partner.hp, source: 'life-drain' });
+      }
+    }
   }
 
   public update(deltaMs: number, input: Vector | SimulationInput): void {
@@ -124,10 +247,14 @@ export class GameSimulation {
       : { move: input, aim: { x: 0, y: 0 }, activate: false, aimMode: 'manual' };
 
     this.state.elapsedMs += deltaMs;
+    this.updateTribulationSeals();
     this.awardSurvivalSpiritOre();
     this.updateTribulation();
     if (this.offerTribulationChoice()) return;
-    this.state.player.attackTimerMs += deltaMs;
+    if (!this.state.playerDowned) this.state.player.attackTimerMs += deltaMs;
+    if (this.state.partner && !this.state.partner.downed) {
+      this.state.partner.attackTimerMs += deltaMs;
+    }
     this.state.player.invulnerableMs = Math.max(0, this.state.player.invulnerableMs - deltaMs);
     this.state.player.activeCooldownRemainingMs = Math.max(
       0,
@@ -137,10 +264,12 @@ export class GameSimulation {
       0,
       this.state.player.activeBarrierRemainingMs - deltaMs,
     );
-    this.state.player.hp = Math.min(
-      this.state.player.maxHp,
-      this.state.player.hp + this.state.player.hpRegenPerSecond * (deltaMs / 1000),
-    );
+    if (!this.state.playerDowned) {
+      this.state.player.hp = Math.min(
+        this.state.player.maxHp,
+        this.state.player.hp + this.state.player.hpRegenPerSecond * (deltaMs / 1000),
+      );
+    }
 
     this.spawnDueBosses();
     this.spawnEliteSquads();
@@ -149,7 +278,11 @@ export class GameSimulation {
     this.updateBossPhases();
     this.updateBossSkills(deltaMs);
     this.updateBossHazards(deltaMs);
-    this.movePlayer(deltaMs, resolvedInput.move);
+    if (!this.state.playerDowned) this.movePlayer(this.state.player, deltaMs, resolvedInput.move);
+    if (this.state.partner && !this.state.partner.downed) {
+      this.movePlayer(this.state.partner, deltaMs, resolvedInput.partner?.move ?? { x: 0, y: 0 });
+    }
+    this.updateCoopRevives(deltaMs);
     if (resolvedInput.activate) {
       const aim = resolveActiveAim(
         this.state,
@@ -157,6 +290,10 @@ export class GameSimulation {
         resolvedInput.aimMode ?? 'auto',
       );
       this.events.push(...tryActivateActiveSkill(this.state, aim));
+    }
+    if (this.state.partner && !this.state.partner.downed && resolvedInput.partner?.activate) {
+      const aim = resolveActiveAim(this.state, resolvedInput.partner.aim, resolvedInput.partner.aimMode ?? 'auto', this.state.partner);
+      this.events.push(...tryActivateActiveSkill(this.state, aim, this.state.partner));
     }
     this.spawnWave(deltaMs);
     this.moveEnemies(deltaMs);
@@ -166,7 +303,7 @@ export class GameSimulation {
     this.events.push(...updateEnemyProjectiles(
       this.state,
       deltaMs,
-      (amount) => { this.applyPlayerDamage(amount); },
+      (amount, player) => { this.applyDamageToPlayer(player ?? this.state.player, amount); },
       () => this.takeId(),
     ));
     this.applyThunderRing(deltaMs);
@@ -180,8 +317,19 @@ export class GameSimulation {
     this.castSwordRain(deltaMs);
     this.castStormNet(deltaMs);
     this.castMirrorSigil(deltaMs);
+    this.castFrostDomain(this.state.player, deltaMs);
+    this.castRiftReturn(this.state.player, deltaMs);
+    this.castStarPull(this.state.player, deltaMs);
+    if (this.state.partner && !this.state.partner.downed) {
+      this.castFrostDomain(this.state.partner, deltaMs);
+      this.castRiftReturn(this.state.partner, deltaMs);
+      this.castStarPull(this.state.partner, deltaMs);
+    }
     this.castAwakeningGlyphs(deltaMs);
-    this.fireAtNearestEnemy();
+    if (!this.state.playerDowned) this.fireAtNearestEnemy(this.state.player);
+    if (this.state.partner && !this.state.partner.downed) {
+      this.fireAtNearestEnemy(this.state.partner);
+    }
     this.collectExperience();
     this.collectTreasureChests();
     this.checkEndStates();
@@ -237,19 +385,21 @@ export class GameSimulation {
       return;
     }
 
+    const player = this.state.pendingUpgradePlayerId === 'p2' ? this.state.partner : this.state.player;
+    if (!player) return;
     if (isInsightChoice(upgrade)) {
-      applyInsight(this.state, upgrade);
+      applyInsight(this.state, upgrade, player);
       this.state.upgradeChoices = [];
-      this.state.phase = 'playing';
+      this.showNextCoopUpgradeOrResume();
       return;
     }
 
-    const result = applyUpgrade(this.state, upgrade);
+    const result = applyUpgrade(this.state, upgrade, player);
     this.state.upgradeChoices = [];
-    if (result.awakened) {
+    if (result.awakened && player === this.state.player) {
       this.beginAwakening(upgrade);
     } else {
-      this.state.phase = 'playing';
+      this.showNextCoopUpgradeOrResume();
     }
   }
 
@@ -258,6 +408,19 @@ export class GameSimulation {
       this.state.phase !== 'tribulation-choice'
       || !this.state.tribulationChoices.includes(choice)
     ) return;
+    const seal = this.state.tribulation === 'blood-moon'
+      ? 'blood'
+      : this.state.tribulation;
+    if (seal !== 'calm') {
+      const rank = ++this.state.tribulationSealRanks[seal];
+      this.events.push({
+        type: 'tribulation-seal-gained',
+        x: this.state.player.x,
+        y: this.state.player.y,
+        seal,
+        rank,
+      });
+    }
     this.state.activeTribulationChoiceId = choice;
     this.state.tribulationChoices = [];
     while (this.state.nextTribulationChoiceAtMs <= this.state.elapsedMs) {
@@ -289,6 +452,71 @@ export class GameSimulation {
     this.spawnObjectiveRouteGuardians(objective);
   }
 
+  private updateTribulationSeals(): void {
+    const mirror = this.state.frostSealMirror;
+    if (mirror && this.state.elapsedMs >= mirror.expiresAtMs) {
+      this.state.frostSealMirror = null;
+    }
+  }
+
+  private triggerThunderSeal(primary: Enemy): void {
+    const rank = this.state.tribulationSealRanks.thunder;
+    if (rank <= 0) return;
+    this.state.thunderSealHits += 1;
+    const threshold = Math.max(2, 5 - rank);
+    if (this.state.thunderSealHits < threshold) return;
+    this.state.thunderSealHits = 0;
+    const target = this.state.enemies
+      .filter((enemy) => enemy.id !== primary.id && enemy.hp > 0)
+      .filter((enemy) => distance(enemy, primary) <= 180)
+      .sort((left, right) => distance(left, primary) - distance(right, primary))[0];
+    if (!target) return;
+    this.dealDamage(target, this.state.player.attackDamage * 1.25, 'chain');
+    this.events.push({
+      type: 'chain-lightning',
+      fromX: primary.x,
+      fromY: primary.y,
+      toX: target.x,
+      toY: target.y,
+    });
+    this.events.push({ type: 'tribulation-seal-triggered', x: primary.x, y: primary.y, seal: 'thunder' });
+  }
+
+  private triggerBloodSeal(): void {
+    const rank = this.state.tribulationSealRanks.blood;
+    if (rank <= 0) return;
+    this.state.bloodSealEliteKills += 1;
+    const threshold = Math.max(1, 4 - rank);
+    if (this.state.bloodSealEliteKills < threshold) return;
+    this.state.bloodSealEliteKills = 0;
+    const player = this.state.player;
+    const radius = 185 + (rank - 1) * 20;
+    for (const enemy of this.state.enemies) {
+      if (enemy.hp > 0 && distance(enemy, player) <= radius) {
+        this.dealDamage(enemy, player.attackDamage * 2.5, 'fire');
+      }
+    }
+    const bulletCount = this.state.enemyProjectiles.length;
+    this.state.enemyProjectiles = this.state.enemyProjectiles.filter(
+      (bullet) => distance(bullet, player) > radius,
+    );
+    this.state.runStats.bulletsBlocked += bulletCount - this.state.enemyProjectiles.length;
+    player.hp = Math.min(player.maxHp, player.hp + 6 + rank * 2);
+    this.events.push({ type: 'fire-burst', x: player.x, y: player.y, radius });
+    this.events.push({ type: 'tribulation-seal-triggered', x: player.x, y: player.y, seal: 'blood' });
+  }
+
+  private createFrostSealMirror(enemy: Enemy): void {
+    const rank = this.state.tribulationSealRanks.frost;
+    if (rank <= 0 || enemy.kind !== 'normal') return;
+    this.state.frostSealMirror = {
+      x: enemy.x,
+      y: enemy.y,
+      expiresAtMs: this.state.elapsedMs + 6000 + (rank - 1) * 1000,
+    };
+    this.events.push({ type: 'tribulation-seal-triggered', x: enemy.x, y: enemy.y, seal: 'frost' });
+  }
+
   public chooseTreasure(upgrade: UpgradeId): void {
     if (this.state.phase !== 'treasure' || !this.state.treasureChoices.includes(upgrade)) {
       return;
@@ -297,7 +525,7 @@ export class GameSimulation {
     const player = this.state.player;
     const kind = getUpgradeKind(upgrade);
     const equipped = getEquippedForKind(player, kind);
-    const limit = kind === 'skill' ? MAX_SKILL_SLOTS : MAX_ENHANCEMENT_SLOTS;
+    const limit = getLoadoutSlotLimit(player, kind);
     const isEquipped = equipped.includes(upgrade);
     if (!isEquipped && equipped.length >= limit) {
       this.state.pendingTreasureUpgrade = upgrade;
@@ -346,17 +574,17 @@ export class GameSimulation {
     this.state.phase = 'treasure';
   }
 
-  private movePlayer(deltaMs: number, input: Vector): void {
+  private movePlayer(player: Player, deltaMs: number, input: Vector): void {
     const direction = normalize(input);
     if (direction.x !== 0 || direction.y !== 0) {
-      this.state.player.lastMoveDirection = direction;
+      player.lastMoveDirection = direction;
     }
-    const distance = this.state.player.speed
+    const distance = player.speed
       * TRIBULATION_MODIFIERS[this.state.tribulation].playerSpeed
       * getTribulationChoiceModifiers(this.state.activeTribulationChoiceId).playerSpeed
       * (deltaMs / 1000);
-    this.state.player.x = clamp(this.state.player.x + direction.x * distance, 0, this.state.arena.width);
-    this.state.player.y = clamp(this.state.player.y + direction.y * distance, 0, this.state.arena.height);
+    player.x = clamp(player.x + direction.x * distance, 0, this.state.arena.width);
+    player.y = clamp(player.y + direction.y * distance, 0, this.state.arena.height);
   }
 
   private spawnWave(deltaMs: number): void {
@@ -740,7 +968,7 @@ export class GameSimulation {
         boss.bossCastCount = (boss.bossCastCount ?? 0) + 1;
         const hazards = createBossPrimaryHazards(
           boss,
-          this.state.player,
+          this.getNearestLivingPlayerEntity(boss),
           () => this.takeId(),
           () => this.nextRandom(),
         );
@@ -760,7 +988,7 @@ export class GameSimulation {
           boss.bossSecondaryTimerMs = 0;
           this.state.bossHazards.push(...createBossSecondaryHazards(
             boss,
-            this.state.player,
+            this.getNearestLivingPlayerEntity(boss),
             () => this.takeId(),
           ));
           this.events.push({
@@ -779,13 +1007,14 @@ export class GameSimulation {
     for (const enemy of this.state.enemies) {
       if (enemy.objectiveKind || enemy.bossObjectiveKind) continue;
       if (enemy.kind === 'boss' && (enemy.bossArenaStunnedUntilMs ?? 0) > this.state.elapsedMs) continue;
+      const targetPlayer = this.getNearestLivingPlayerEntity(enemy);
       const towardPlayer = normalize({
-        x: this.state.player.x - enemy.x,
-        y: this.state.player.y - enemy.y,
+        x: targetPlayer.x - enemy.x,
+        y: targetPlayer.y - enemy.y,
       });
       let direction = towardPlayer;
       if (enemy.kind === 'normal' && enemy.archetype !== 'melee') {
-        const currentDistance = distance(enemy, this.state.player);
+        const currentDistance = distance(enemy, targetPlayer);
         const preferred = enemy.archetype === 'talisman'
           ? 350
           : enemy.archetype === 'crossbow' ? 300 : 325;
@@ -798,8 +1027,8 @@ export class GameSimulation {
       const frozen = this.state.elapsedMs < enemy.freezeUntilMs;
       const slowed = this.state.elapsedMs < enemy.slowUntilMs;
       const movementMultiplier = frozen ? 0 : slowed ? enemy.slowMultiplier : 1;
-      const barrierSlow = this.state.player.activeBarrierRemainingMs > 0
-        && distance(enemy, this.state.player) <= this.state.player.activeBarrierRadius
+      const barrierSlow = targetPlayer.activeBarrierRemainingMs > 0
+        && distance(enemy, targetPlayer) <= targetPlayer.activeBarrierRadius
         ? 0.55
         : 1;
       const tribulationSpeed = TRIBULATION_MODIFIERS[this.state.tribulation].enemySpeed;
@@ -808,9 +1037,9 @@ export class GameSimulation {
       enemy.y += direction.y * enemy.speed * movementMultiplier * barrierSlow * tribulationSpeed * choiceSpeed * (deltaMs / 1000);
 
       if (
-        distance(enemy, this.state.player) <= enemy.radius + this.state.player.radius
+        distance(enemy, targetPlayer) <= enemy.radius + targetPlayer.radius
       ) {
-        this.applyPlayerDamage(enemy.damage);
+        this.applyDamageToPlayer(targetPlayer, enemy.damage);
       }
     }
     this.removeDeadEnemies();
@@ -839,13 +1068,10 @@ export class GameSimulation {
         owner.x = hazard.x + (hazard.endX - hazard.x) * progress;
         owner.y = hazard.y + (hazard.endY - hazard.y) * progress;
       }
-      if (
-        owner &&
-        !hazard.hasDamagedPlayer &&
-        isPointInsideBossHazard(hazard, this.state.player)
-      ) {
+      const hazardTarget = owner ? this.getNearestLivingPlayerEntity(hazard) : null;
+      if (owner && hazardTarget && !hazard.hasDamagedPlayer && isPointInsideBossHazard(hazard, hazardTarget)) {
         hazard.hasDamagedPlayer = true;
-        const hit = this.applyPlayerDamage(owner.damage * hazard.damageMultiplier);
+        const hit = this.applyDamageToPlayer(hazardTarget, owner.damage * hazard.damageMultiplier);
         if (hit && hazard.healBossFraction) {
           const amount = owner.maxHp * hazard.healBossFraction;
           owner.hp = Math.min(owner.maxHp, owner.hp + amount);
@@ -868,58 +1094,58 @@ export class GameSimulation {
     );
   }
 
-  private applyPlayerDamage(amount: number): boolean {
-    if (this.state.player.invulnerableMs > 0) {
+  private applyDamageToPlayer(player: Player | import('./types').CoopPlayer, amount: number): boolean {
+    if (player.invulnerableMs > 0) {
       return false;
     }
-    if (this.nextRandom() < this.state.player.dodgeChance) {
-      this.events.push({ type: 'dodge', x: this.state.player.x, y: this.state.player.y });
-      this.state.player.invulnerableMs = CONTACT_DAMAGE_COOLDOWN_MS;
+    if (this.nextRandom() < player.dodgeChance) {
+      this.events.push({ type: 'dodge', x: player.x, y: player.y });
+      player.invulnerableMs = CONTACT_DAMAGE_COOLDOWN_MS;
       return false;
     }
     amount *= TRIBULATION_MODIFIERS[this.state.tribulation].enemyDamage
       * getTribulationChoiceModifiers(this.state.activeTribulationChoiceId).enemyDamage;
-    const shieldBefore = this.state.player.shield;
+    const shieldBefore = player.shield;
     const shieldDamage = Math.min(shieldBefore, amount);
-    this.state.player.shield -= shieldDamage;
+    player.shield -= shieldDamage;
     const healthDamage = amount - shieldDamage;
-    this.state.player.hp -= healthDamage;
+    player.hp -= healthDamage;
     if (shieldDamage > 0) {
       this.events.push({
         type: 'shield-blocked',
-        x: this.state.player.x,
-        y: this.state.player.y,
+        x: player.x,
+        y: player.y,
         amount: shieldDamage,
       });
     }
     if (
       shieldBefore > 0 &&
-      this.state.player.shield === 0 &&
-      this.state.player.shieldBreakReady &&
-      this.state.player.shieldBreakDamage > 0
+      player.shield === 0 &&
+      player.shieldBreakReady &&
+      player.shieldBreakDamage > 0
     ) {
-      this.state.player.shieldBreakReady = false;
+      player.shieldBreakReady = false;
       for (const target of this.state.enemies) {
-        if (distance(target, this.state.player) <= 120) {
-          this.dealDamage(target, this.state.player.shieldBreakDamage);
+        if (distance(target, player) <= 120) {
+          this.dealDamage(target, player.shieldBreakDamage);
         }
       }
       this.events.push({
         type: 'shield-broken',
-        x: this.state.player.x,
-        y: this.state.player.y,
+        x: player.x,
+        y: player.y,
         radius: 120,
       });
     }
     if (healthDamage > 0) {
       this.events.push({
         type: 'player-damaged',
-        x: this.state.player.x,
-        y: this.state.player.y,
+        x: player.x,
+        y: player.y,
         amount: healthDamage,
       });
     }
-    this.state.player.invulnerableMs = CONTACT_DAMAGE_COOLDOWN_MS;
+    player.invulnerableMs = CONTACT_DAMAGE_COOLDOWN_MS;
     return true;
   }
 
@@ -1109,41 +1335,41 @@ export class GameSimulation {
     return 'burst';
   }
 
-  private fireAtNearestEnemy(): void {
-    if (this.state.player.attackTimerMs < this.state.player.attackCooldownMs || this.state.enemies.length === 0) {
+  private fireAtNearestEnemy(player: Player): void {
+    if (player.attackTimerMs < player.attackCooldownMs || this.state.enemies.length === 0) {
       return;
     }
 
     const target = this.state.enemies
       .slice()
-      .sort((a, b) => distance(a, this.state.player) - distance(b, this.state.player))[0];
-    const direction = normalize({ x: target.x - this.state.player.x, y: target.y - this.state.player.y });
+      .sort((a, b) => distance(a, player) - distance(b, player))[0];
+    const direction = normalize({ x: target.x - player.x, y: target.y - player.y });
     const baseAngle = Math.atan2(direction.y, direction.x);
     const spread = 0.13;
 
-    for (let index = 0; index < this.state.player.projectileCount; index += 1) {
-      const angle = baseAngle + (index - (this.state.player.projectileCount - 1) / 2) * spread;
+    for (let index = 0; index < player.projectileCount; index += 1) {
+      const angle = baseAngle + (index - (player.projectileCount - 1) / 2) * spread;
       this.state.projectiles.push({
         id: this.takeId(),
         targetId: target.id,
-        x: this.state.player.x,
-        y: this.state.player.y,
+        x: player.x,
+        y: player.y,
         vx: Math.cos(angle) * PROJECTILE_SPEED,
         vy: Math.sin(angle) * PROJECTILE_SPEED,
         radius: 7,
-        damage: this.state.player.attackDamage,
+        damage: player.attackDamage,
         ttlMs: PROJECTILE_TTL_MS,
         pierceRemaining: this.state.player.projectilePierce,
         hitEnemyIds: [],
       });
       this.events.push({
         type: 'projectile-fired',
-        x: this.state.player.x,
-        y: this.state.player.y,
+        x: player.x,
+        y: player.y,
         angle,
       });
     }
-    this.state.player.attackTimerMs = 0;
+    player.attackTimerMs = 0;
   }
 
   private moveProjectiles(deltaMs: number): void {
@@ -1159,13 +1385,15 @@ export class GameSimulation {
         .sort((a, b) => distance(previous, a) - distance(previous, b));
 
       for (const enemy of hitCandidates) {
+        const source = projectile.source ?? (projectile.kind === 'star' ? 'north-star' : 'flying-sword');
         this.dealDamage(
           enemy,
           projectile.damage,
-          projectile.source ?? (projectile.kind === 'star' ? 'north-star' : 'flying-sword'),
+          source,
         );
         projectile.hitEnemyIds.push(enemy.id);
         this.events.push({ type: 'projectile-hit', x: enemy.x, y: enemy.y });
+        if (source === 'flying-sword') this.triggerThunderSeal(enemy);
         this.applyOnHitEffects(enemy);
         if (projectile.pierceRemaining <= 0) {
           projectile.ttlMs = 0;
@@ -1415,36 +1643,129 @@ export class GameSimulation {
     this.removeDeadEnemies();
   }
 
+  private castFrostDomain(player: Player, deltaMs: number): void {
+    if (player.frostDomainCooldownMs <= 0) return;
+    player.frostDomainTimerMs += deltaMs;
+    if (player.frostDomainTimerMs < player.frostDomainCooldownMs) return;
+    player.frostDomainTimerMs %= player.frostDomainCooldownMs;
+    const awakened = player.upgradeLevels['frost-domain'] >= 6;
+    for (const enemy of this.state.enemies) {
+      if (enemy.hp <= 0 || distance(enemy, player) > player.frostDomainRadius) continue;
+      this.dealDamage(enemy, player.frostDomainDamage, 'chain');
+      if (enemy.kind === 'boss') {
+        enemy.slowMultiplier = Math.min(enemy.slowMultiplier, awakened ? 0.48 : 0.72);
+        enemy.slowUntilMs = Math.max(enemy.slowUntilMs, this.state.elapsedMs + 1000);
+      } else if (player.frostDomainFreezeMs > 0) {
+        enemy.freezeUntilMs = Math.max(enemy.freezeUntilMs, this.state.elapsedMs + player.frostDomainFreezeMs);
+      } else {
+        enemy.slowMultiplier = Math.min(enemy.slowMultiplier, 0.65);
+        enemy.slowUntilMs = Math.max(enemy.slowUntilMs, this.state.elapsedMs + 1000);
+      }
+    }
+    if (awakened) {
+      this.state.enemyProjectiles = this.state.enemyProjectiles.filter((bullet) => {
+        if (distance(bullet, player) > player.frostDomainRadius) return true;
+        this.state.runStats.bulletsBlocked += 1;
+        this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: 'barrier' });
+        return false;
+      });
+    }
+    this.events.push({ type: 'frost-domain', x: player.x, y: player.y, radius: player.frostDomainRadius, awakened });
+    this.removeDeadEnemies();
+  }
+
+  private castRiftReturn(player: Player, deltaMs: number): void {
+    if (player.riftReturnCooldownMs <= 0) return;
+    player.riftReturnTimerMs += deltaMs;
+    if (player.riftReturnTimerMs < player.riftReturnCooldownMs) return;
+    player.riftReturnTimerMs %= player.riftReturnCooldownMs;
+    const target = this.state.enemies.filter((enemy) => enemy.hp > 0 && distance(enemy, player) <= player.riftReturnRange)
+      .sort((left, right) => distance(left, player) - distance(right, player))[0];
+    if (!target) return;
+    const awakened = player.riftReturnEchoes > 0;
+    this.dealDamage(target, player.riftReturnDamage, 'sword-rain');
+    this.events.push({ type: 'rift-return', fromX: player.x, fromY: player.y, toX: target.x, toY: target.y, awakened: false });
+    this.dealDamage(target, player.riftReturnDamage, 'sword-rain');
+    this.events.push({ type: 'rift-return', fromX: target.x, fromY: target.y, toX: player.x, toY: player.y, awakened });
+    if (awakened) {
+      const echoes = this.state.enemies.filter((enemy) => enemy.hp > 0 && enemy.id !== target.id && distance(enemy, target) <= 180)
+        .sort((left, right) => distance(left, target) - distance(right, target)).slice(0, player.riftReturnEchoes);
+      for (const echo of echoes) {
+        this.dealDamage(echo, player.riftReturnDamage * 0.7, 'sword-rain');
+        this.events.push({ type: 'rift-return', fromX: player.x, fromY: player.y, toX: echo.x, toY: echo.y, awakened: true });
+      }
+    }
+    this.removeDeadEnemies();
+  }
+
+  private castStarPull(player: Player, deltaMs: number): void {
+    if (player.starPullCooldownMs <= 0) return;
+    player.starPullTimerMs += deltaMs;
+    if (player.starPullTimerMs < player.starPullCooldownMs) return;
+    player.starPullTimerMs %= player.starPullCooldownMs;
+    const center = this.state.enemies.filter((enemy) => enemy.hp > 0 && distance(enemy, player) <= 560)
+      .sort((left, right) => distance(left, player) - distance(right, player))[0];
+    if (!center) return;
+    const awakened = player.starPullBreaksBullets;
+    for (const enemy of this.state.enemies) {
+      if (enemy.hp <= 0 || distance(enemy, center) > player.starPullRadius) continue;
+      if (enemy.kind === 'boss') {
+        enemy.slowMultiplier = Math.min(enemy.slowMultiplier, 0.6);
+        enemy.slowUntilMs = Math.max(enemy.slowUntilMs, this.state.elapsedMs + 1100);
+      } else {
+        const direction = normalize({ x: center.x - enemy.x, y: center.y - enemy.y });
+        enemy.x += direction.x * player.starPullForce;
+        enemy.y += direction.y * player.starPullForce;
+      }
+      this.dealDamage(enemy, player.starPullDamage, 'meteor');
+    }
+    if (awakened) {
+      this.state.enemyProjectiles = this.state.enemyProjectiles.filter((bullet) => {
+        if (distance(bullet, center) > 28) return true;
+        this.state.runStats.bulletsBlocked += 1;
+        this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: 'barrier' });
+        return false;
+      });
+    }
+    this.events.push({ type: 'star-pull', x: center.x, y: center.y, radius: player.starPullRadius, awakened });
+    this.removeDeadEnemies();
+  }
+
   private collectExperience(): void {
     const remaining = [];
     for (const shard of this.state.shards) {
       if (distance(shard, this.state.player) <= this.state.player.pickupRadius) {
-        this.state.player.experience += shard.value
+        const experience = shard.value
           * this.state.player.experienceMultiplier
           * getTribulationChoiceModifiers(this.state.activeTribulationChoiceId).experience;
+        this.state.player.experience += experience;
+        if (this.state.partner && !this.state.partner.downed) {
+          this.state.partner.experience += experience * this.state.partner.experienceMultiplier;
+        }
       } else {
         remaining.push(shard);
       }
     }
     this.state.shards = remaining;
 
-    while (this.state.player.experience >= this.state.player.experienceToNext && this.state.phase === 'playing') {
-      this.state.player.experience -= this.state.player.experienceToNext;
-      this.state.player.level += 1;
-      this.state.player.experienceToNext = getNextExperienceRequirement(
-        this.state.player.experienceToNext,
-        this.state.player.level,
-      );
-      this.state.upgradeChoices = createUpgradeChoices(this.state);
-      if (this.state.upgradeChoices.length > 0) {
-        this.state.phase = 'upgrade';
-      }
-      this.events.push({
-        type: 'level-up',
-        x: this.state.player.x,
-        y: this.state.player.y,
-        level: this.state.player.level,
-      });
+    const levelUps: Array<'p1' | 'p2'> = [];
+    this.collectPlayerLevels(this.state.player, 'p1', levelUps);
+    if (this.state.partner && !this.state.partner.downed) {
+      this.collectPlayerLevels(this.state.partner, 'p2', levelUps);
+    }
+    if (levelUps.length > 0) {
+      this.state.coopUpgradeQueue.push(...levelUps);
+      this.showNextCoopUpgradeOrResume();
+    }
+  }
+
+  private collectPlayerLevels(player: Player, id: 'p1' | 'p2', queue: Array<'p1' | 'p2'>): void {
+    while (player.experience >= player.experienceToNext) {
+      player.experience -= player.experienceToNext;
+      player.level += 1;
+      player.experienceToNext = getNextExperienceRequirement(player.experienceToNext, player.level);
+      queue.push(id);
+      this.events.push({ type: 'level-up', x: player.x, y: player.y, level: player.level });
     }
   }
 
@@ -1485,12 +1806,21 @@ export class GameSimulation {
             this.state.player.maxShield,
             this.state.player.shield + this.state.player.maxShield * (isFinalLink ? 0.35 : 0.15),
           );
+          const fieldExpiresAtMs = this.state.elapsedMs + 18_000;
+          this.state.objectiveFieldExpiresAtMs[enemy.objectiveKind] = fieldExpiresAtMs;
           this.events.push({
             type: 'objective-resolved',
             x: enemy.x,
             y: enemy.y,
             objective: enemy.objectiveKind,
             success: true,
+          });
+          this.events.push({
+            type: 'objective-field-activated',
+            x: enemy.x,
+            y: enemy.y,
+            objective: enemy.objectiveKind,
+            expiresAtMs: fieldExpiresAtMs,
           });
           this.events.push({ type: 'spirit-ore-earned', x: enemy.x, y: enemy.y, source: 'objective', amount: 1 });
           if (isFinalLink) {
@@ -1545,7 +1875,10 @@ export class GameSimulation {
           this.dropBossRewards(enemy);
         } else {
           this.state.kills += 1;
-          if (enemy.eliteAffix) this.state.runStats.elitesDefeated += 1;
+          if (enemy.eliteAffix) {
+            this.state.runStats.elitesDefeated += 1;
+            this.triggerBloodSeal();
+          }
           this.state.shards.push({
             id: this.takeId(),
             x: enemy.x,
@@ -1554,16 +1887,19 @@ export class GameSimulation {
             value: enemy.experience * TRIBULATION_MODIFIERS[this.state.tribulation].experience,
           });
         }
-        if (
-          !enemy.objectiveKind
+        const bloodHarvest = !enemy.objectiveKind
+          && enemy.kind === 'normal'
+          && this.hasObjectiveField('blood-well')
+          && this.nextRandom() < 0.25;
+        const lifeDrain = !enemy.objectiveKind
           && this.state.player.lifeOnKill > 0
           && this.state.player.hp < this.state.player.maxHp
-          && this.nextRandom() < this.state.player.lifeOnKillChance
-        ) {
+          && this.nextRandom() < this.state.player.lifeOnKillChance;
+        if (bloodHarvest || lifeDrain) {
           const oldHp = this.state.player.hp;
           this.state.player.hp = Math.min(
             this.state.player.maxHp,
-            oldHp + this.state.player.lifeOnKill,
+            oldHp + (bloodHarvest ? 3 : this.state.player.lifeOnKill),
           );
           this.events.push({
             type: 'player-healed',
@@ -1579,6 +1915,10 @@ export class GameSimulation {
       }
     }
     this.state.enemies = survivors;
+  }
+
+  private hasObjectiveField(objective: import('./types').ObjectiveKind): boolean {
+    return this.state.elapsedMs < this.state.objectiveFieldExpiresAtMs[objective];
   }
 
   private updateSiegePressure(deltaMs: number): void {
@@ -1721,6 +2061,7 @@ export class GameSimulation {
         frozen = true;
       }
       this.events.push({ type: 'frost-hit', x: primary.x, y: primary.y, frozen });
+      if (frozen) this.createFrostSealMirror(primary);
     }
 
     if (this.state.player.chainLightningDamage > 0) {
@@ -1728,7 +2069,7 @@ export class GameSimulation {
         .filter((enemy) => enemy.id !== primary.id && enemy.hp > 0)
         .filter((enemy) => distance(enemy, primary) <= 150)
         .sort((a, b) => distance(a, primary) - distance(b, primary))
-        .slice(0, this.state.player.chainLightningTargets);
+        .slice(0, this.state.player.chainLightningTargets + (this.hasObjectiveField('thunder-pillar') ? 1 : 0));
       for (const target of chained) {
         this.dealDamage(target, this.state.player.chainLightningDamage, 'chain');
         this.events.push({
@@ -1986,10 +2327,28 @@ export class GameSimulation {
   }
 
   private checkEndStates(): void {
-    if (this.state.player.hp <= 0) {
-      this.state.player.hp = 0;
-      this.state.phase = 'lost';
+    if (!this.state.coopEnabled) {
+      if (this.state.player.hp <= 0) {
+        this.state.player.hp = 0;
+        this.state.phase = 'lost';
+      }
+      return;
     }
+    const partner = this.state.partner;
+    if (!partner) return;
+    if (this.state.player.hp <= 0 && !this.state.playerDowned) {
+      this.state.player.hp = 0;
+      this.state.playerDowned = true;
+      this.state.playerDownedUntilMs = this.state.elapsedMs + 12_000;
+      this.state.playerReviveProgressMs = 0;
+    }
+    if (partner.hp <= 0 && !partner.downed) {
+      partner.hp = 0;
+      partner.downed = true;
+      partner.downedUntilMs = this.state.elapsedMs + 12_000;
+      partner.reviveProgressMs = 0;
+    }
+    if (this.state.playerDowned && partner.downed) this.state.phase = 'lost';
   }
 
   private takeId(): number {

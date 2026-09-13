@@ -14,10 +14,10 @@ import {
 import { applyInsight, createUpgradeChoices } from '../../src/sim/upgrades';
 
 describe('split skill and enhancement loadout', () => {
-  it('defines fifteen skills at level six and ten enhancements at level four', () => {
-    expect(SKILL_IDS).toHaveLength(15);
+  it('defines eighteen skills at level six and ten enhancements at level four', () => {
+    expect(SKILL_IDS).toHaveLength(18);
     expect(ENHANCEMENT_IDS).toHaveLength(10);
-    expect(new Set([...SKILL_IDS, ...ENHANCEMENT_IDS])).toHaveLength(25);
+    expect(new Set([...SKILL_IDS, ...ENHANCEMENT_IDS])).toHaveLength(28);
     expect(getUpgradeMaxLevel('thunder-ring')).toBe(6);
     expect(getUpgradeMaxLevel('faster-swords')).toBe(4);
   });

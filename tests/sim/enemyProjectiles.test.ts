@@ -72,4 +72,29 @@ describe('enemy projectiles', () => {
       by: 'blade',
     }));
   });
+
+  it('lets a completed frost core deny bullets near the player', () => {
+    const state = createDefaultState();
+    state.elapsedMs = 10_000;
+    state.objectiveFieldExpiresAtMs['frost-core'] = 28_000;
+    state.enemyProjectiles.push({
+      id: 1,
+      ownerId: 2,
+      kind: 'bolt',
+      x: state.player.x + 100,
+      y: state.player.y,
+      vx: 0,
+      vy: 0,
+      radius: 6,
+      damage: 12,
+      ttlMs: 1000,
+      homingMs: 0,
+      turnRate: 0,
+    });
+
+    const events = updateEnemyProjectiles(state, 16, () => undefined);
+
+    expect(state.enemyProjectiles).toHaveLength(0);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'enemy-bullet-broken', by: 'barrier' }));
+  });
 });

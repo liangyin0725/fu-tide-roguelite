@@ -92,8 +92,13 @@ export class EffectRenderer {
         this.scene.cameras.main.shake(260, 0.006);
       } else if (spec.kind === 'tribulation-choice') {
         this.scene.cameras.main.shake(150, 0.004);
+      } else if (spec.kind === 'tribulation-seal') {
+        this.scene.cameras.main.shake(spec.event.type === 'tribulation-seal-gained' ? 200 : 110, 0.004);
       } else if (spec.kind === 'objective') {
         this.scene.cameras.main.shake(140, 0.004);
+      } else if (spec.kind === 'objective-field') {
+        this.scene.cameras.main.flash(180, 156, 239, 255, false);
+        this.scene.cameras.main.shake(180, 0.005);
       }
     }
   }
@@ -244,6 +249,14 @@ export class EffectRenderer {
       case 'frost-hit':
         drawFrost(graphics, event.x, event.y, event.frozen, progress, fade, event.style);
         break;
+      case 'tribulation-seal-gained':
+      case 'tribulation-seal-triggered': {
+        const color = sealColor(event.seal);
+        const radius = event.type === 'tribulation-seal-gained' ? 32 + progress * 94 : 20 + progress * 58;
+        drawRing(graphics, event.x, event.y, radius, color, fade, event.type === 'tribulation-seal-gained' ? 7 : 4);
+        drawRing(graphics, event.x, event.y, radius * 0.58, 0xffffff, fade * 0.72, 2);
+        break;
+      }
       case 'shield-broken':
         drawShieldBreak(graphics, event.x, event.y, event.radius, progress, fade);
         break;
@@ -305,6 +318,91 @@ export class EffectRenderer {
       case 'soul-pinned':
         drawRing(graphics, event.x, event.y, 16 + progress * 26, 0xff4fa3, fade, event.awakened ? 7 : 4);
         break;
+      case 'frost-domain':
+        {
+          const outerRadius = event.radius * (0.46 + progress * 0.54);
+          drawRing(graphics, event.x, event.y, outerRadius, 0x69d9ff, fade * 0.9, event.awakened ? 10 : 6);
+          drawRing(graphics, event.x, event.y, outerRadius * 0.7, 0xdff9ff, fade * 0.65, 2);
+          for (let index = 0; index < 8; index += 1) {
+            const angle = index * Math.PI / 4 - progress * 0.8;
+            const shardX = event.x + Math.cos(angle) * outerRadius;
+            const shardY = event.y + Math.sin(angle) * outerRadius;
+            graphics.lineStyle(index % 2 === 0 ? 4 : 2, index % 2 === 0 ? 0xc9f5ff : 0xffffff, fade * 0.86);
+            graphics.lineBetween(shardX - Math.cos(angle) * 12, shardY - Math.sin(angle) * 12, shardX + Math.cos(angle + Math.PI / 2) * 10, shardY + Math.sin(angle + Math.PI / 2) * 10);
+            graphics.lineBetween(shardX - Math.cos(angle) * 12, shardY - Math.sin(angle) * 12, shardX + Math.cos(angle - Math.PI / 2) * 10, shardY + Math.sin(angle - Math.PI / 2) * 10);
+          }
+          if (event.awakened) {
+            drawRing(graphics, event.x, event.y, outerRadius * 1.14, 0x8d7cff, fade * 0.58, 3);
+            for (let index = 0; index < 6; index += 1) {
+              const angle = index * Math.PI / 3 + progress * 1.4;
+              const runeRadius = outerRadius * 0.88;
+              graphics.lineStyle(3, 0xb9f8ff, fade * 0.8);
+              graphics.strokeRect(event.x + Math.cos(angle) * runeRadius - 7, event.y + Math.sin(angle) * runeRadius - 7, 14, 14);
+            }
+          }
+        }
+        break;
+      case 'rift-return':
+        {
+          const dx = event.toX - event.fromX;
+          const dy = event.toY - event.fromY;
+          const length = Math.max(1, Math.hypot(dx, dy));
+          const nx = dx / length;
+          const ny = dy / length;
+          const px = -ny;
+          const py = nx;
+          const color = event.awakened ? 0xf6d365 : 0xc68cff;
+          graphics.lineStyle(event.awakened ? 18 : 12, color, fade * 0.18);
+          graphics.lineBetween(event.fromX, event.fromY, event.toX, event.toY);
+          graphics.lineStyle(event.awakened ? 7 : 4, color, fade);
+          graphics.lineBetween(event.fromX, event.fromY, event.toX, event.toY);
+          graphics.lineStyle(2, 0xffffff, fade * 0.92);
+          graphics.lineBetween(event.fromX, event.fromY, event.toX, event.toY);
+          for (const ratio of [0.24, 0.5, 0.76]) {
+            const x = event.fromX + dx * ratio;
+            const y = event.fromY + dy * ratio;
+            const size = 8 + progress * 6;
+            graphics.lineStyle(3, 0xffffff, fade * 0.84);
+            graphics.lineBetween(x - nx * size - px * size, y - ny * size - py * size, x + nx * size, y + ny * size);
+            graphics.lineBetween(x - nx * size + px * size, y - ny * size + py * size, x + nx * size, y + ny * size);
+          }
+          drawRing(graphics, event.fromX, event.fromY, 8 + progress * 16, 0xc68cff, fade * 0.72, 2);
+          drawRing(graphics, event.toX, event.toY, 14 + progress * 28, 0xffffff, fade, 3);
+          if (event.awakened) {
+            graphics.lineStyle(3, 0x61f5ff, fade * 0.7);
+            graphics.lineBetween(event.fromX + px * 11, event.fromY + py * 11, event.toX + px * 11, event.toY + py * 11);
+            for (let index = 0; index < 6; index += 1) {
+              const angle = index * Math.PI / 3 + progress * 4;
+              graphics.lineStyle(3, index % 2 === 0 ? 0xf6d365 : 0x61f5ff, fade * 0.82);
+              graphics.lineBetween(event.toX, event.toY, event.toX + Math.cos(angle) * 32, event.toY + Math.sin(angle) * 32);
+            }
+          }
+        }
+        break;
+      case 'star-pull':
+        {
+          const outerRadius = event.radius * (1 - progress * 0.48);
+          drawRing(graphics, event.x, event.y, outerRadius, 0xf6d365, fade, event.awakened ? 10 : 6);
+          drawRing(graphics, event.x, event.y, outerRadius * 0.62, 0x61f5ff, fade * 0.64, 3);
+          drawRing(graphics, event.x, event.y, outerRadius * 0.25, 0xffffff, fade * 0.75, 2);
+          for (let index = 0; index < 6; index += 1) {
+            const angle = index * Math.PI / 3 + progress * 2;
+            graphics.lineStyle(3, 0xffd166, fade * 0.8);
+            graphics.lineBetween(event.x + Math.cos(angle) * outerRadius, event.y + Math.sin(angle) * outerRadius, event.x, event.y);
+            const particleRadius = outerRadius * (0.86 - (progress * 0.42 + index * 0.06) % 0.58);
+            graphics.fillStyle(index % 2 === 0 ? 0xf6d365 : 0xffffff, fade * 0.9);
+            graphics.fillCircle(event.x + Math.cos(angle) * particleRadius, event.y + Math.sin(angle) * particleRadius, event.awakened ? 5 : 3);
+          }
+          if (event.awakened) {
+            for (let index = 0; index < 8; index += 1) {
+              const angle = index * Math.PI / 4 - progress * 3.2;
+              graphics.lineStyle(index % 2 === 0 ? 5 : 2, index % 2 === 0 ? 0xf6d365 : 0x8d7cff, fade * 0.86);
+              graphics.lineBetween(event.x, event.y, event.x + Math.cos(angle) * outerRadius * 0.42, event.y + Math.sin(angle) * outerRadius * 0.42);
+            }
+            drawRing(graphics, event.x, event.y, outerRadius * 1.12, 0x8d7cff, fade * 0.52, 3);
+          }
+        }
+        break;
       case 'ranged-windup':
         drawRing(graphics, event.x, event.y, 12 + progress * 24, 0xffd166, fade, 3);
         break;
@@ -360,6 +458,9 @@ export class EffectRenderer {
       case 'objective-resolved':
         drawRing(graphics, event.x, event.y, 30 + progress * 130, event.success ? 0x7dff9c : 0xff3864, fade, 10);
         break;
+      case 'objective-field-activated':
+        drawObjectiveField(graphics, event.x, event.y, event.objective, progress, fade);
+        break;
       case 'synergy-triggered':
         drawSynergy(graphics, event.x, event.y, synergyColor(event.synergy), progress, fade);
         break;
@@ -371,6 +472,30 @@ function objectiveColor(objective: import('../sim/types').ObjectiveKind): number
   if (objective === 'blood-well') return 0xff4fa3;
   if (objective === 'frost-core') return 0xc9f5ff;
   return 0x61f5ff;
+}
+
+function drawObjectiveField(
+  graphics: Phaser.GameObjects.Graphics,
+  x: number,
+  y: number,
+  objective: import('../sim/types').ObjectiveKind,
+  progress: number,
+  fade: number,
+): void {
+  const color = objectiveColor(objective);
+  const radius = 42 + progress * 145;
+  drawRing(graphics, x, y, radius, color, fade, 7);
+  drawRing(graphics, x, y, radius * 0.58, 0xffffff, fade * 0.65, 2);
+  for (let index = 0; index < 8; index += 1) {
+    const angle = index * Math.PI / 4 + progress * 2.2;
+    graphics.lineStyle(index % 2 === 0 ? 4 : 2, color, fade * 0.82);
+    graphics.lineBetween(
+      x + Math.cos(angle) * radius * 0.38,
+      y + Math.sin(angle) * radius * 0.38,
+      x + Math.cos(angle) * radius * 1.08,
+      y + Math.sin(angle) * radius * 1.08,
+    );
+  }
 }
 
 function drawCharacterUnlock(
@@ -445,6 +570,12 @@ function tribulationColor(tribulation: import('../sim/types').TribulationType): 
   if (tribulation === 'blood-moon') return 0xff4f79;
   if (tribulation === 'frost') return 0x9defff;
   return 0xf6d365;
+}
+
+function sealColor(seal: import('../sim/types').TribulationSealId): number {
+  if (seal === 'blood') return 0xff4f79;
+  if (seal === 'frost') return 0x9defff;
+  return 0x61f5ff;
 }
 
 function choiceColor(choice: import('../sim/types').TribulationChoiceId): number {

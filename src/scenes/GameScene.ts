@@ -34,6 +34,7 @@ import {
 } from '../settings/gameSettings';
 import { GameAudio } from '../audio/GameAudio';
 import { isBetaModePassphrase } from '../testing/betaMode';
+import { getBossWaveBeforeElapsed } from '../sim/spawnPacing';
 import {
   earnDaoYun,
   earnSpiritOre,
@@ -59,6 +60,8 @@ export class GameScene extends Phaser.Scene {
   private readonly bossHazardGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   private playerGraphic!: Phaser.GameObjects.Graphics;
   private playerSprite!: Phaser.GameObjects.Sprite;
+  private partnerGraphic!: Phaser.GameObjects.Graphics;
+  private partnerSprite!: Phaser.GameObjects.Sprite;
   private gridGraphic!: Phaser.GameObjects.Graphics;
   private arenaTribulation: TribulationType = 'calm';
   private thunderGraphic!: Phaser.GameObjects.Graphics;
@@ -93,12 +96,16 @@ export class GameScene extends Phaser.Scene {
     this.gridGraphic.setDepth(-10);
     this.playerGraphic = createEntityGraphic(this);
     this.playerSprite = createPixelSprite(this, 'player');
+    this.partnerGraphic = createEntityGraphic(this);
+    this.partnerSprite = createPixelSprite(this, 'player');
+    this.partnerGraphic.setVisible(false);
+    this.partnerSprite.setVisible(false);
     this.thunderGraphic = this.add.graphics().setDepth(4).setBlendMode(Phaser.BlendModes.ADD);
     this.orbitingBladeGraphic = this.add.graphics().setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
     this.awakeningGlyphGraphic = this.add.graphics().setDepth(5.5).setBlendMode(Phaser.BlendModes.ADD);
     this.effects = new EffectRenderer(this, () => this.settings);
     this.activeBarrierGraphic = this.add.graphics().setDepth(6).setBlendMode(Phaser.BlendModes.ADD);
-    this.keys = this.input.keyboard!.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,SPACE') as Record<
+    this.keys = this.input.keyboard!.addKeys('W,A,S,D,E,UP,DOWN,LEFT,RIGHT,SPACE,ENTER') as Record<
       string,
       Phaser.Input.Keyboard.Key
     >;
@@ -111,6 +118,12 @@ export class GameScene extends Phaser.Scene {
       onStart: () => {
         this.audio.startMusic();
         this.simulation.start();
+      },
+      onStartLocalCoop: () => {
+        this.audio.startMusic();
+        this.simulation.startLocalCoop();
+        this.cameras.main.setBounds(0, 0, this.simulation.state.arena.width, this.simulation.state.arena.height);
+        this.drawArena();
       },
       onOpenDongfu: () => { this.simulation.state.phase = 'dongfu'; },
       onCloseDongfu: () => { this.simulation.state.phase = 'menu'; },
@@ -177,10 +190,16 @@ export class GameScene extends Phaser.Scene {
     this.collectMetaProgression(events);
     this.effects.render(events);
     this.audio.playEvents(events);
-    this.cameras.main.centerOn(this.simulation.state.player.x, this.simulation.state.player.y);
+    this.centerCoopCamera();
     this.renderWorld();
     this.effects.update(Math.min(delta, 50));
-    this.hud.render(this.simulation.state, this.settings, this.settingsOpen, this.metaProgression);
+    this.hud.render(
+      this.simulation.state,
+      this.settings,
+      this.settingsOpen,
+      this.metaProgression,
+      this.keys.E.isDown,
+    );
   }
 
   private restartRun(): void {
@@ -195,6 +214,8 @@ export class GameScene extends Phaser.Scene {
     this.simulation = new GameSimulation(createDefaultState());
     this.injectMetaTalents();
     this.simulation.state.phase = 'character-choice';
+    this.cameras.main.setBounds(0, 0, this.simulation.state.arena.width, this.simulation.state.arena.height);
+    this.drawArena();
   }
 
   private startBetaMode(): void {
@@ -262,6 +283,7 @@ export class GameScene extends Phaser.Scene {
     this.simulation.state.player.level = 18;
     this.simulation.state.elapsedMs = startElapsedMs;
     if (startElapsedMs > 0) {
+      this.simulation.state.bossWave = getBossWaveBeforeElapsed(startElapsedMs);
       this.simulation.state.nextBossAtMs = startElapsedMs;
       this.simulation.state.nextEliteSquadAtMs = startElapsedMs;
     }
@@ -436,8 +458,8 @@ export class GameScene extends Phaser.Scene {
     this.mobileAim = null;
     return {
       move: {
-        x: keyValue(this.keys.D, this.keys.RIGHT) - keyValue(this.keys.A, this.keys.LEFT) + this.mobileMove.x,
-        y: keyValue(this.keys.S, this.keys.DOWN) - keyValue(this.keys.W, this.keys.UP) + this.mobileMove.y,
+        x: keyValue(this.keys.D) - keyValue(this.keys.A) + this.mobileMove.x,
+        y: keyValue(this.keys.S) - keyValue(this.keys.W) + this.mobileMove.y,
       },
       aim: mobileAim ?? {
         x: world.x - this.simulation.state.player.x,
@@ -445,6 +467,15 @@ export class GameScene extends Phaser.Scene {
       },
       activate,
       aimMode: this.settings.aimMode,
+      partner: {
+        move: {
+          x: keyValue(this.keys.RIGHT) - keyValue(this.keys.LEFT),
+          y: keyValue(this.keys.DOWN) - keyValue(this.keys.UP),
+        },
+        aim: { x: 0, y: 0 },
+        activate: Phaser.Input.Keyboard.JustDown(this.keys.ENTER),
+        aimMode: 'auto',
+      },
     };
   }
 
@@ -456,7 +487,7 @@ export class GameScene extends Phaser.Scene {
 
   private renderWorld(): void {
     if (this.arenaTribulation !== this.simulation.state.tribulation) this.drawArena();
-    const { player } = this.simulation.state;
+    const { player, partner } = this.simulation.state;
     drawThunderAura(
       this.thunderGraphic,
       player.x,
@@ -503,6 +534,7 @@ export class GameScene extends Phaser.Scene {
       player.maxShield > 0 ? player.shield / player.maxShield : 0,
       player.frostSlowPercent,
     );
+    this.renderPartner(partner);
 
     this.syncMap(
       this.enemyGraphics,
@@ -610,8 +642,44 @@ export class GameScene extends Phaser.Scene {
     for (const sprite of map.values()) sprite.destroy();
     map.clear();
   }
+
+  private renderPartner(partner: import('../sim/types').CoopPlayer | null): void {
+    if (!partner) {
+      this.partnerGraphic.setVisible(false);
+      this.partnerSprite.setVisible(false);
+      return;
+    }
+    this.partnerGraphic.setVisible(true);
+    this.partnerSprite.setVisible(true);
+    this.partnerSprite.setPosition(Math.round(partner.x), Math.round(partner.y));
+    const texture: PixelSpriteKey = partner.characterId ? `player-${partner.characterId}` : 'player';
+    if (this.partnerSprite.texture.key !== texture) this.partnerSprite.setTexture(texture);
+    this.partnerSprite.setFrame(Math.floor((this.time.now + 90) / 180) % 2);
+    this.partnerSprite.setTint(partner.downed ? 0x707890 : 0x6deaff);
+    if (partner.lastMoveDirection.x !== 0) this.partnerSprite.setFlipX(partner.lastMoveDirection.x < 0);
+    drawPlayerStatus(
+      this.partnerGraphic,
+      partner.x,
+      partner.y,
+      partner.hp / partner.maxHp,
+      partner.maxShield > 0 ? partner.shield / partner.maxShield : 0,
+      partner.frostSlowPercent,
+    );
+  }
+
+  private centerCoopCamera(): void {
+    const { player, partner } = this.simulation.state;
+    if (!partner) {
+      this.cameras.main.centerOn(player.x, player.y);
+      this.cameras.main.setZoom(1);
+      return;
+    }
+    const separation = Phaser.Math.Distance.Between(player.x, player.y, partner.x, partner.y);
+    this.cameras.main.setZoom(Phaser.Math.Clamp(1.05 - separation / 1600, 0.75, 1));
+    this.cameras.main.centerOn((player.x + partner.x) / 2, (player.y + partner.y) / 2);
+  }
 }
 
-function keyValue(primary: Phaser.Input.Keyboard.Key, secondary: Phaser.Input.Keyboard.Key): number {
-  return primary.isDown || secondary.isDown ? 1 : 0;
+function keyValue(primary: Phaser.Input.Keyboard.Key): number {
+  return primary.isDown ? 1 : 0;
 }

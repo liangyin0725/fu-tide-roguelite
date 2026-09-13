@@ -15,6 +15,7 @@ import {
   SKILL_IDS,
 } from '../../src/sim/upgradeCatalog';
 import { ARENA_HEIGHT, ARENA_WIDTH, PLAYER_START_X, PLAYER_START_Y } from '../../src/sim/constants';
+import { getBossWaveBeforeElapsed } from '../../src/sim/spawnPacing';
 
 describe('GameSimulation', () => {
   it('awards spirit ore for each five-minute survival milestone', () => {
@@ -165,7 +166,7 @@ describe('GameSimulation', () => {
 
     const choices = createUpgradeChoices(state);
 
-    expect(UPGRADE_IDS).toHaveLength(25);
+    expect(UPGRADE_IDS).toHaveLength(28);
     expect(new Set(choices).size).toBe(3);
     expect(choices.every((choice) => !isInsightChoice(choice) && UPGRADE_IDS.includes(choice))).toBe(true);
   });
@@ -691,6 +692,13 @@ describe('GameSimulation', () => {
     expect(sim.state.enemies
       .filter((enemy) => enemy.kind === 'boss')
       .map((enemy) => enemy.bossType)).toEqual(['crimson', 'thunder', 'blood-moon']);
+  });
+
+  it('derives the preceding boss wave for a test-run timeline jump', () => {
+    expect(getBossWaveBeforeElapsed(0)).toBe(0);
+    expect(getBossWaveBeforeElapsed(300_000)).toBe(0);
+    expect(getBossWaveBeforeElapsed(600_000)).toBe(1);
+    expect(getBossWaveBeforeElapsed(900_000)).toBe(2);
   });
 
   it('enters boss phase two at 65% and a final phase at 30% health', () => {

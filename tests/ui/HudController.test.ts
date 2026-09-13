@@ -6,6 +6,8 @@ import { createDefaultState } from '../../src/sim/state';
 import { DEFAULT_GAME_SETTINGS } from '../../src/settings/gameSettings';
 import { GameSimulation } from '../../src/sim/GameSimulation';
 import type { MetaProgression } from '../../src/sim/types';
+import { INSIGHT_LABELS, UPGRADE_LABELS } from '../../src/sim/upgrades';
+import { localizeMarkup } from '../../src/i18n/uiText';
 
 describe('HudController', () => {
   beforeEach(() => {
@@ -30,6 +32,23 @@ describe('HudController', () => {
     expect(root.textContent).toContain('Lv.1');
   });
 
+  it('shows both co-op builds only while the E-key view is held', () => {
+    const root = document.querySelector<HTMLElement>('#hud')!;
+    const hud = new HudController(root, callbacks());
+    const simulation = new GameSimulation(createDefaultState());
+    simulation.enableLocalCoop();
+
+    hud.render(simulation.state, DEFAULT_GAME_SETTINGS, false, undefined, false);
+    expect(root.querySelectorAll('.skill-slot')).toHaveLength(0);
+    expect(root.querySelector('.active-slot')).not.toBeNull();
+
+    hud.render(simulation.state, DEFAULT_GAME_SETTINGS, false, undefined, true);
+    expect(root.querySelectorAll('.skill-slot')).toHaveLength(8);
+    expect(root.querySelectorAll('.enhancement-slot')).toHaveLength(8);
+    expect(root.querySelector('.partner-dock')).not.toBeNull();
+    expect(root.querySelector('.skill-dock')?.classList.contains('coop-builds')).toBe(true);
+  });
+
   it('shows the active tribulation and elite squad countdown', () => {
     const root = document.querySelector<HTMLElement>('#hud')!;
     const hud = new HudController(root, callbacks());
@@ -42,6 +61,68 @@ describe('HudController', () => {
 
     expect(root.textContent).toContain('九霄雷劫');
     expect(root.textContent).toContain('精英 0:30');
+  });
+
+  it('shows active objective fields with their remaining duration', () => {
+    const root = document.querySelector<HTMLElement>('#hud')!;
+    const hud = new HudController(root, callbacks());
+    const state = createDefaultState();
+    state.elapsedMs = 12_000;
+    state.objectiveFieldExpiresAtMs['frost-core'] = 30_000;
+
+    hud.render(state, DEFAULT_GAME_SETTINGS, false);
+
+    expect(root.querySelector('.objective-field')?.textContent).toContain('霜域护持 0:18');
+  });
+
+  it('translates active objective field labels in English mode', () => {
+    const root = document.querySelector<HTMLElement>('#hud')!;
+    const hud = new HudController(root, callbacks());
+    const state = createDefaultState();
+    state.elapsedMs = 12_000;
+    state.objectiveFieldExpiresAtMs['thunder-pillar'] = 30_000;
+    state.objectiveFieldExpiresAtMs['blood-well'] = 30_000;
+    state.objectiveFieldExpiresAtMs['frost-core'] = 30_000;
+
+    hud.render(state, { ...DEFAULT_GAME_SETTINGS, language: 'en' }, false);
+
+    expect(root.textContent).toContain('Storm Conduit 0:18');
+    expect(root.textContent).toContain('Crimson Harvest 0:18');
+    expect(root.textContent).toContain('Stillwater Ward 0:18');
+  });
+
+  it('does not leave Chinese text in the standard English combat HUD', () => {
+    const root = document.querySelector<HTMLElement>('#hud')!;
+    const hud = new HudController(root, callbacks());
+    const state = createDefaultState();
+    state.tribulation = 'thunder';
+    state.player.activeSkill = 'dimension-step';
+    state.player.equippedSkills = ['frost-domain', 'rift-return', 'star-pull'];
+
+    hud.render(state, { ...DEFAULT_GAME_SETTINGS, language: 'en' }, false);
+
+    expect(root.textContent).not.toMatch(/[\u4e00-\u9fff]/);
+  });
+
+  it('transliterates every loadout symbol in English mode', () => {
+    const symbols = [
+      ...Object.values(UPGRADE_LABELS).map((label) => label.symbol),
+      ...Object.values(INSIGHT_LABELS).map((label) => label.symbol),
+    ].join('');
+
+    expect(localizeMarkup(symbols, 'en')).not.toMatch(/[\u4e00-\u9fff]/);
+  });
+
+  it('translates the local co-op start button in English mode', () => {
+    const root = document.querySelector<HTMLElement>('#hud')!;
+    const hud = new HudController(root, callbacks());
+    const state = createDefaultState();
+    state.phase = 'menu';
+
+    hud.render(state, { ...DEFAULT_GAME_SETTINGS, language: 'en' }, false);
+
+    expect(root.textContent).toContain('Local Co-op');
+    expect(root.textContent).not.toContain('本地双人');
   });
 
   it('shows a persistent warning while the player is surrounded', () => {
@@ -223,6 +304,20 @@ describe('HudController', () => {
     expect(root.textContent).toContain('Attack interval reduced by an additional 40%.');
   });
 
+  it('shows each acquired tribulation seal and its rank in the combat HUD', () => {
+    const root = document.querySelector<HTMLElement>('#hud')!;
+    const hud = new HudController(root, callbacks());
+    const state = createDefaultState();
+    state.tribulationSealRanks = { thunder: 2, blood: 1, frost: 1 };
+
+    hud.render(state, { ...DEFAULT_GAME_SETTINGS, language: 'en' }, false);
+
+    const seals = root.querySelector<HTMLElement>('.tribulation-seals')!;
+    expect(seals.textContent).toContain('Thunder Seal II');
+    expect(seals.textContent).toContain('Blood Seal I');
+    expect(seals.textContent).toContain('Frost Seal I');
+  });
+
   it('lets beta players select skills and configure their levels before launch', () => {
     const root = document.querySelector<HTMLElement>('#hud')!;
     const handlers = callbacks();
@@ -233,7 +328,7 @@ describe('HudController', () => {
     state.betaSkillLevels['thunder-ring'] = 5;
 
     hud.render(state, DEFAULT_GAME_SETTINGS, false);
-    expect(root.querySelectorAll('[data-beta-skill]')).toHaveLength(15);
+    expect(root.querySelectorAll('[data-beta-skill]')).toHaveLength(18);
     root.querySelector<HTMLButtonElement>('[data-beta-skill="chain-lightning"]')!.click();
     expect(handlers.onToggleBetaSkill).toHaveBeenCalledWith('chain-lightning');
     const level = root.querySelector<HTMLInputElement>('[data-beta-level="thunder-ring"]')!;

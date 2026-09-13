@@ -31,6 +31,12 @@ const OBJECTIVE_NAMES: Record<ObjectiveKind, string> = {
   'frost-core': '击碎玄霜劫核',
 };
 
+const OBJECTIVE_FIELD_NAMES: Record<ObjectiveKind, string> = {
+  'thunder-pillar': '雷脉共鸣',
+  'blood-well': '血潮回生',
+  'frost-core': '霜域护持',
+};
+
 const BOSS_OBJECTIVE_NAMES = {
   'crimson-anchor': '赤煞阵眼',
   'storm-pylon': '引雷天柱',
@@ -43,6 +49,7 @@ const BOSS_HAZARD_NAMES = {
 
 interface HudCallbacks {
   onStart: () => void;
+  onStartLocalCoop?: () => void;
   onOpenDongfu: () => void;
   onCloseDongfu: () => void;
   onUnlockTalent: (talentId: MetaUnlockId) => void;
@@ -99,13 +106,14 @@ export class HudController {
     settings: GameSettings = DEFAULT_GAME_SETTINGS,
     settingsOpen = false,
     progression: MetaProgression = createDefaultMetaProgression(),
+    showCoopBuilds = false,
   ): void {
     this.settings = settings;
     const showCombatHud = !['menu', 'dongfu', 'beta-loadout', 'lost'].includes(state.phase);
     const showLoadout = showCombatHud && !['character-choice', 'tribulation-choice', 'objective-route'].includes(state.phase);
     const markup = localizeMarkup([
       showCombatHud ? this.renderTopBar(state) : '',
-      showLoadout ? this.renderLoadout(state, settings) : '',
+      showLoadout ? this.renderLoadout(state, settings, showCoopBuilds) : '',
       settingsOpen ? this.renderSettings(settings) : this.renderOverlay(state, progression),
     ].join(''), settings.language);
 
@@ -115,12 +123,12 @@ export class HudController {
     }
   }
 
-  private renderLoadout(state: GameState, settings: GameSettings): string {
-    const skillSlots = this.renderSlotRow(state, state.player.equippedSkills, 5, 'skill-slot');
+  private renderLoadout(state: GameState, settings: GameSettings, showCoopBuilds: boolean): string {
+    const skillSlots = this.renderSlotRow(state, state.player.equippedSkills, state.player.skillSlotLimit, 'skill-slot');
     const enhancementSlots = this.renderSlotRow(
       state,
       state.player.equippedEnhancements,
-      6,
+      state.player.enhancementSlotLimit,
       'enhancement-slot',
     );
     const activeSynergies = getActiveSynergies(state.player);
@@ -133,20 +141,35 @@ export class HudController {
     const active = state.player.activeSkill;
     const activeName = active ? getActiveSkillName(active) : '未选择';
     const cooldown = Math.max(0, state.player.activeCooldownRemainingMs);
+    const showBuilds = !state.coopEnabled || showCoopBuilds;
+    const partnerDock = state.partner && showBuilds ? this.renderPartnerDock(state) : '';
     return `<div class="mobile-joystick opacity-${settings.joystickOpacity}" data-control="joystick"><i></i></div>
-    <div class="skill-dock">
-      <div class="loadout-stack">
+    <div class="skill-dock${state.coopEnabled && showBuilds ? ' coop-builds' : ''}">
+      ${showBuilds ? `<div class="loadout-stack">
         ${synergyStrip}
         <div class="loadout-rows">
           <div class="loadout-row"><b>技能</b><div class="passive-slots skill-slots">${skillSlots}</div></div>
           <div class="loadout-row"><b>强化</b><div class="passive-slots enhancement-slots">${enhancementSlots}</div></div>
         </div>
-      </div>
+      </div>` : ''}
       <button class="active-slot" data-action="activate" aria-label="释放主动技能" title="${activeName} · 空格">
         <i>${active ? activeName.slice(0, 1) : '主'}</i>
         <span>${active ? `${activeName}<small>Lv.${state.player.activeSkillLevel} · ${cooldown > 0 ? `${(cooldown / 1000).toFixed(1)}s` : getActiveSkillLevelSummary(active, state.player.activeSkillLevel)}</small>` : activeName}</span>
       </button>
       <button class="settings-button" data-action="open-settings" aria-label="设置" title="设置">⚙</button>
+    </div>${partnerDock}`;
+  }
+
+  private renderPartnerDock(state: GameState): string {
+    const partner = state.partner!;
+    const skills = this.renderSlotRow(state, partner.equippedSkills, partner.skillSlotLimit, 'skill-slot', partner);
+    const enhancements = this.renderSlotRow(state, partner.equippedEnhancements, partner.enhancementSlotLimit, 'enhancement-slot', partner);
+    const active = partner.activeSkill;
+    return `<div class="partner-dock${partner.downed ? ' downed' : ''}">
+      <b>P2 · ${partner.downed ? '待救援' : `Lv.${partner.level}`}</b>
+      <div class="loadout-row"><span>技能</span><div class="passive-slots skill-slots">${skills}</div></div>
+      <div class="loadout-row"><span>强化</span><div class="passive-slots enhancement-slots">${enhancements}</div></div>
+      <small>${active ? `${getActiveSkillName(active)} · Enter` : '未选择主动技能'}</small>
     </div>`;
   }
 
@@ -155,12 +178,13 @@ export class HudController {
     equipped: UpgradeId[],
     count: number,
     className: string,
+    player = state.player,
   ): string {
     return Array.from({ length: count }, (_, index) => {
       const upgrade = equipped[index];
       if (!upgrade) return `<div class="passive-slot ${className} empty"><i>空</i></div>`;
       const label = UPGRADE_LABELS[upgrade];
-      const level = state.player.upgradeLevels[upgrade];
+      const level = player.upgradeLevels[upgrade];
       const awakened = level === getUpgradeMaxLevel(upgrade);
       return `<div class="passive-slot ${className}${awakened ? ' awakened' : ''}" title="${label.name}">
         <i>${label.symbol}</i><span>${awakened ? '觉' : `Lv.${level}`}</span>
@@ -224,6 +248,13 @@ export class HudController {
     const choiceStatus = activeChoice
       ? `<div class="pill tribulation-choice-status" data-tribulation="${activeChoice.tribulation}" title="${activeChoice.benefit}；${activeChoice.pressure}">${activeChoice.symbol} ${activeChoice.name} · ${formatTime(getTribulationEndMs(state.elapsedMs) - state.elapsedMs)}</div>`
       : '';
+    const sealStatus = Object.entries(state.tribulationSealRanks)
+      .filter(([, rank]) => rank > 0)
+      .map(([seal, rank]) => {
+        const name = seal === 'thunder' ? '雷印' : seal === 'blood' ? '血印' : '霜印';
+        return `<span data-seal="${seal}">${name} ${toRoman(rank)}</span>`;
+      })
+      .join('');
     const eliteCountdown = state.elapsedMs < state.nextEliteSquadAtMs
       ? `<div class="pill elite-countdown">精英 ${formatTime(state.nextEliteSquadAtMs - state.elapsedMs)}</div>`
       : '';
@@ -240,6 +271,10 @@ export class HudController {
           <i style="--value:${Math.max(0, objective.hp / objective.maxHp)}"></i>
         </div>`
       : '';
+    const objectiveFields = (Object.entries(state.objectiveFieldExpiresAtMs) as Array<[ObjectiveKind, number]>)
+      .filter(([, expiresAtMs]) => expiresAtMs > state.elapsedMs)
+      .map(([objectiveKind, expiresAtMs]) => `<div class="pill objective-field" data-objective="${objectiveKind}">${OBJECTIVE_FIELD_NAMES[objectiveKind]} ${formatTime(expiresAtMs - state.elapsedMs)}</div>`)
+      .join('');
     const bossObjective = state.activeBossObjectiveId === null
       ? undefined
       : state.enemies.find((enemy) => enemy.id === state.activeBossObjectiveId);
@@ -263,11 +298,13 @@ export class HudController {
         ${siegeWarning}
         ${tribulation}
         ${choiceStatus}
+        ${sealStatus ? `<div class="tribulation-seals">${sealStatus}</div>` : ''}
       </div>
       ${bossStatus}
       ${bossTelegraph}
       ${bossObjectiveStatus}
       ${objectiveStatus}
+      ${objectiveFields}
     `;
   }
 
@@ -279,6 +316,7 @@ export class HudController {
           <h1>符潮残夜</h1>
           <p>用 WASD 或方向键移动，在无尽怪潮中修行。每五分钟会有一位劫主降临。</p>
           <button data-action="start">开始渡劫</button>
+          <button class="secondary-action" data-action="start-local-coop">本地双人</button>
           <button class="secondary-action" data-action="open-dongfu">洞府</button>
           ${this.settings.betaModeUnlocked ? '<button class="secondary-action" data-action="start-beta-mode">进入内测模式</button>' : ''}
           <button class="secondary-action" data-action="open-settings">设置</button>
@@ -291,11 +329,12 @@ export class HudController {
       return this.renderDongfu(progression);
     }
 
-    if (state.phase === 'character-choice') {
+    if (state.phase === 'character-choice' || state.phase === 'coop-character-choice') {
+      const playerLabel = state.phase === 'coop-character-choice' ? 'P2' : 'P1';
       return `
         <div class="center-panel compact upgrade-panel character-panel">
-          <p class="eyebrow">CHOOSE CULTIVATOR</p>
-          <h2>选择本局角色</h2>
+          <p class="eyebrow">CHOOSE CULTIVATOR · ${playerLabel}</p>
+          <h2>选择${playerLabel}本局角色</h2>
           <div class="upgrade-grid">
             ${CHARACTER_IDS.map((character) => {
               const definition = CHARACTERS[character];
@@ -312,11 +351,12 @@ export class HudController {
     }
 
     if (state.phase === 'upgrade') {
+      const upgradePlayer = state.pendingUpgradePlayerId === 'p2' ? state.partner : state.player;
       return this.renderChoicePanel(
         state,
         state.upgradeChoices,
-        `LEVEL ${state.player.level}`,
-        '选择一道符法',
+        `${state.pendingUpgradePlayerId.toUpperCase()} · LEVEL ${upgradePlayer?.level ?? 1}`,
+        `为 ${state.pendingUpgradePlayerId.toUpperCase()} 选择一道符法`,
         'upgrade',
       );
     }
@@ -358,7 +398,8 @@ export class HudController {
       </div>`;
     }
 
-    if (state.phase === 'active-choice') {
+    if (state.phase === 'active-choice' || state.phase === 'coop-active-choice') {
+      const playerLabel = state.phase === 'coop-active-choice' ? 'P2' : 'P1';
       const skills: ActiveSkillId[] = ['talisman-ruin', 'dimension-step', 'tai-chi-ward'];
       const descriptions: Record<ActiveSkillId, string> = {
         'talisman-ruin': '朝目标方向释放密集符剑，造成高额爆发伤害',
@@ -367,8 +408,8 @@ export class HudController {
       };
       return `
         <div class="center-panel compact upgrade-panel active-choice-panel">
-          <p class="eyebrow">ACTIVE ART</p>
-          <h2>选择本局主动技能</h2>
+          <p class="eyebrow">ACTIVE ART · ${playerLabel}</p>
+          <h2>选择${playerLabel}主动技能</h2>
           <div class="upgrade-grid">
             ${skills.map((skill, index) => `<button class="upgrade active-choice" data-active-skill="${skill}">
               <span class="upgrade-head"><i class="upgrade-symbol">${['符', '移', '阵'][index]}</i><em>主动</em></span>
@@ -632,6 +673,8 @@ export class HudController {
     const objectiveRoute = button.dataset.objectiveRoute as ObjectiveRouteId | undefined;
     if (action === 'start') {
       this.callbacks.onStart();
+    } else if (action === 'start-local-coop') {
+      this.callbacks.onStartLocalCoop?.();
     } else if (action === 'restart') {
       this.callbacks.onRestart();
     } else if (action === 'open-dongfu') {
@@ -786,3 +829,7 @@ function formatTime(ms: number): string {
 }
 
 function nextTribulationAt(elapsedMs: number): number { return getTribulationEndMs(elapsedMs); }
+
+function toRoman(value: number): string {
+  return ['I', 'II', 'III', 'IV', 'V'][Math.max(0, Math.min(4, value - 1))];
+}

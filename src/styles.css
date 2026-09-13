@@ -150,6 +150,91 @@ body,
   line-height: 10px;
 }
 
+.partner-dock {
+  position: fixed;
+  right: 16px;
+  bottom: 18px;
+  z-index: 24;
+  display: grid;
+  gap: 5px;
+  width: 202px;
+  padding: 8px;
+  border: 1px solid rgba(109, 234, 255, 0.58);
+  border-radius: 7px;
+  background: rgba(7, 15, 28, 0.86);
+  box-shadow: 0 0 18px rgba(55, 196, 255, 0.17);
+  color: #b9f6ff;
+  font-size: 10px;
+}
+
+.partner-dock.downed {
+  border-color: rgba(255, 106, 136, 0.8);
+  color: #ffd5df;
+  animation: siege-warning-pulse 0.85s steps(2) infinite;
+}
+
+.partner-dock .loadout-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.partner-dock .loadout-row > span {
+  width: 24px;
+  color: #84cce1;
+}
+
+.partner-dock .passive-slots {
+  gap: 3px;
+}
+
+.partner-dock .skill-slots,
+.partner-dock .enhancement-slots { grid-template-columns: repeat(4, 23px); }
+
+.partner-dock .passive-slot {
+  width: 23px;
+  height: 23px;
+  font-size: 8px;
+}
+
+.skill-dock.coop-builds {
+  left: 16px;
+  transform: none;
+}
+
+.skill-dock.coop-builds .loadout-stack {
+  padding: 8px;
+  border: 1px solid rgba(246, 211, 101, 0.42);
+  border-radius: 7px;
+  background: rgba(8, 9, 18, 0.86);
+  box-shadow: 0 0 18px rgba(246, 211, 101, 0.12);
+}
+
+.skill-dock.coop-builds .skill-slots,
+.skill-dock.coop-builds .enhancement-slots {
+  grid-template-columns: repeat(4, 52px);
+}
+
+@media (max-width: 700px) {
+  .partner-dock {
+    right: 8px;
+    bottom: 86px;
+    width: 178px;
+    transform: scale(0.86);
+    transform-origin: bottom right;
+  }
+
+  .skill-dock.coop-builds {
+    left: 8px;
+    bottom: 10px;
+  }
+
+  .skill-dock.coop-builds .skill-slots,
+  .skill-dock.coop-builds .enhancement-slots {
+    grid-template-columns: repeat(4, 40px);
+  }
+}
+
 .pill.tribulation.active {
   border-color: rgba(97, 245, 255, 0.6);
   color: #d8fbff;
@@ -180,6 +265,27 @@ body,
   border-color: rgba(157, 239, 255, 0.72);
   color: #e5fbff;
 }
+
+.tribulation-seals {
+  display: flex;
+  gap: 4px;
+  padding: 5px 7px;
+  border: 1px solid rgba(246, 211, 101, 0.35);
+  background: rgba(14, 11, 25, 0.82);
+  box-shadow: inset 0 0 12px rgba(246, 211, 101, 0.08);
+  color: #ffe7a8;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.tribulation-seals span + span::before {
+  content: ' / ';
+  color: rgba(219, 235, 255, 0.48);
+}
+
+.tribulation-seals [data-seal="thunder"] { color: #8ffcff; }
+.tribulation-seals [data-seal="blood"] { color: #ff9aa4; }
+.tribulation-seals [data-seal="frost"] { color: #d8fbff; }
 
 .elite-countdown {
   border-color: rgba(198, 140, 255, 0.48);
@@ -494,6 +600,9 @@ canvas {
 
 .objective-status[data-objective="blood-well"] { border-color: rgba(255, 79, 163, 0.7); }
 .objective-status[data-objective="frost-core"] { border-color: rgba(201, 245, 255, 0.78); }
+.pill.objective-field { border-color: rgba(246, 211, 101, 0.72); color: #fff1b3; }
+.pill.objective-field[data-objective="blood-well"] { border-color: rgba(255, 79, 163, 0.76); color: #ffb5cf; }
+.pill.objective-field[data-objective="frost-core"] { border-color: rgba(201, 245, 255, 0.82); color: #d8fbff; }
 
 .objective-status span,
 .objective-status b {

@@ -51,6 +51,21 @@ describe('tribulation stage objective chains', () => {
     }));
   });
 
+  it('turns a completed objective into an eighteen-second battlefield field', () => {
+    const state = objectiveState();
+    const sim = new GameSimulation(state);
+    sim.update(1, { x: 0, y: 0 });
+    state.enemies.find((enemy) => enemy.id === state.activeObjectiveId)!.hp = 0;
+
+    sim.update(1, { x: 0, y: 0 });
+
+    expect((state as any).objectiveFieldExpiresAtMs['thunder-pillar']).toBe(408_001);
+    expect(sim.consumeEvents()).toContainEqual(expect.objectContaining({
+      type: 'objective-field-activated',
+      objective: 'thunder-pillar',
+    }));
+  });
+
   it('adds elite guardians and upgrades the final reward on the risk route', () => {
     const state = objectiveState();
     const sim = new GameSimulation(state);

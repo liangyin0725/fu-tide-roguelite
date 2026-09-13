@@ -1,4 +1,4 @@
-import type { ActiveSkillId, CombatEvent, Enemy, GameState, Vector } from './types';
+import type { ActiveSkillId, CombatEvent, Enemy, GameState, Player, Vector } from './types';
 import { hasSynergy } from './synergies';
 import { dealPlayerDamage } from './combatStats';
 
@@ -33,22 +33,22 @@ export function resolveActiveAim(
   state: GameState,
   manualAim: Vector,
   mode: 'auto' | 'manual',
+  player: Player = state.player,
 ): Vector {
   if (mode === 'auto' && state.enemies.length > 0) {
     const target = state.enemies
       .filter((enemy) => enemy.hp > 0)
-      .sort((a, b) => distance(a, state.player) - distance(b, state.player))[0];
-    if (target) return normalize({ x: target.x - state.player.x, y: target.y - state.player.y });
+      .sort((a, b) => distance(a, player) - distance(b, player))[0];
+    if (target) return normalize({ x: target.x - player.x, y: target.y - player.y });
   }
   const manual = normalize(manualAim);
   if (manual.x !== 0 || manual.y !== 0) return manual;
-  const lastMove = normalize(state.player.lastMoveDirection);
+  const lastMove = normalize(player.lastMoveDirection);
   if (lastMove.x !== 0 || lastMove.y !== 0) return lastMove;
   return { x: 0, y: -1 };
 }
 
-export function tryActivateActiveSkill(state: GameState, aim: Vector): CombatEvent[] {
-  const player = state.player;
+export function tryActivateActiveSkill(state: GameState, aim: Vector, player: Player = state.player): CombatEvent[] {
   const skill = player.activeSkill;
   if (!skill || player.activeCooldownRemainingMs > 0) return [];
   const direction = normalize(aim);
@@ -64,7 +64,7 @@ export function tryActivateActiveSkill(state: GameState, aim: Vector): CombatEve
       const range = Math.hypot(offset.x, offset.y);
       const difference = Math.abs(wrapAngle(Math.atan2(offset.y, offset.x) - angle));
       if (range <= config.range && difference <= config.halfAngle) {
-        dealActiveDamage(state, enemy, config.damage, events);
+        dealActiveDamage(state, player, enemy, config.damage, events);
         hit.push(enemy);
       }
     }
@@ -72,7 +72,7 @@ export function tryActivateActiveSkill(state: GameState, aim: Vector): CombatEve
       for (const origin of hit) {
         for (const enemy of state.enemies) {
           if (enemy.id !== origin.id && distance(enemy, origin) <= 85) {
-            dealActiveDamage(state, enemy, config.damage * 0.5, events);
+            dealActiveDamage(state, player, enemy, config.damage * 0.5, events);
           }
         }
       }
@@ -86,7 +86,7 @@ export function tryActivateActiveSkill(state: GameState, aim: Vector): CombatEve
     if (player.activeSkillLevel >= 4) {
       for (const enemy of state.enemies) {
         if (segmentDistance(start, player, enemy) <= enemy.radius + player.radius) {
-          dealActiveDamage(state, enemy, 90, events);
+          dealActiveDamage(state, player, enemy, 90, events);
         }
       }
     }
@@ -103,7 +103,7 @@ export function tryActivateActiveSkill(state: GameState, aim: Vector): CombatEve
     if (player.activeSkillLevel >= 4) {
       for (const enemy of state.enemies) {
         if (distance(enemy, player) <= config.radius) {
-          dealActiveDamage(state, enemy, 70, events);
+          dealActiveDamage(state, player, enemy, 70, events);
         }
       }
     }
@@ -126,11 +126,12 @@ export function tryActivateActiveSkill(state: GameState, aim: Vector): CombatEve
 
 function dealActiveDamage(
   state: GameState,
+  player: Player,
   enemy: Enemy,
   amount: number,
   events: CombatEvent[],
 ): void {
-  const dealt = dealPlayerDamage(state, enemy, amount * state.player.arcaneDamageMultiplier, 'active');
+  const dealt = dealPlayerDamage(state, enemy, amount * player.arcaneDamageMultiplier, 'active');
   if (dealt >= 1) events.push({ type: 'damage-dealt', x: enemy.x, y: enemy.y, amount: dealt, source: 'active' });
 }
 

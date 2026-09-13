@@ -1,6 +1,7 @@
 import type {
   GameState,
   InsightId,
+  Player,
   UpgradeChoice,
   UpgradeId,
   UpgradeLevels,
@@ -225,6 +226,18 @@ export const UPGRADE_LABELS: Record<UpgradeId, UpgradeLabel> = {
     name: '玄镜符', description: '周期拦截弹幕并反击施法者', symbol: '镜', category: 'defense',
     awakeningName: '万象反照', awakeningSummary: ['反击扩散至附近敌人', '反照范围与伤害大幅提高'],
   },
+  'frost-domain': {
+    name: '玄霜禁域', description: '周期展开寒霜领域，迟滞近处敌群', symbol: '域', category: 'arcane',
+    awakeningName: '永夜霜界', awakeningSummary: ['领域扩大并冻结普通怪', '领域内敌方弹幕会被冰封'],
+  },
+  'rift-return': {
+    name: '裂空回环', description: '周期放出往返灵刃，双段切割敌群', symbol: '环', category: 'offense',
+    awakeningName: '万界归刃', awakeningSummary: ['归刃化作两道追击残影', '往返伤害与射程大幅提高'],
+  },
+  'star-pull': {
+    name: '引星法阵', description: '周期牵引敌群并在阵心引爆星坠', symbol: '星', category: 'arcane',
+    awakeningName: '群星坠渊', awakeningSummary: ['法阵范围与牵引强度大幅提高', '阵心可吞没敌方弹幕'],
+  },
 };
 
 export const AWAKENING_SURGE_SUMMARIES: Partial<Record<UpgradeId, string>> = {
@@ -241,22 +254,33 @@ export const AWAKENING_SURGE_SUMMARIES: Partial<Record<UpgradeId, string>> = {
   'solar-ray': '三道日轮剑光贯穿最近敌群',
   'void-bell': '钟鸣扩张并清除近处弹幕',
   'spirit-sword-rain': '灵剑瀑布骤落最近敌群',
+  'frost-domain': '玄霜领域铺开并封冻近处敌群',
+  'rift-return': '裂空灵刃往返切开敌阵',
+  'star-pull': '引星法阵牵住敌群并引爆阵心',
 };
 
 export function createEmptyUpgradeLevels(): UpgradeLevels {
   return Object.fromEntries(UPGRADE_IDS.map((id) => [id, 0])) as UpgradeLevels;
 }
 
-export function createUpgradeChoices(state: GameState): UpgradeChoice[] {
-  const available = getAvailable(state).filter((id) => canEquipUpgrade(state.player, id));
-  if (available.length === 0) {
-    const offset = (state.player.level + state.bossesDefeated) % INSIGHT_IDS.length;
-    return [0, 1, 2].map((index) => INSIGHT_IDS[(offset + index) % INSIGHT_IDS.length]);
+export function createUpgradeChoices(
+  state: GameState,
+  player: Player = state.player,
+  excludedChoices: UpgradeChoice[] = [],
+): UpgradeChoice[] {
+  const available = getAvailable(player).filter((id) => canEquipUpgrade(player, id));
+  const distinctAvailable = available.filter((id) => !excludedChoices.includes(id));
+  const choicePool = distinctAvailable.length >= 3 ? distinctAvailable : available;
+  if (choicePool.length === 0) {
+    const offset = (player.level + state.bossesDefeated) % INSIGHT_IDS.length;
+    const insights = [0, 1, 2].map((index) => INSIGHT_IDS[(offset + index) % INSIGHT_IDS.length]);
+    const distinctInsights = insights.filter((id) => !excludedChoices.includes(id));
+    return distinctInsights.length > 0 ? distinctInsights : insights;
   }
-  const owned = available.filter((id) => state.player.upgradeLevels[id] > 0);
-  const fresh = available.filter((id) => state.player.upgradeLevels[id] === 0);
+  const owned = choicePool.filter((id) => player.upgradeLevels[id] > 0);
+  const fresh = choicePool.filter((id) => player.upgradeLevels[id] === 0);
   const choices: UpgradeId[] = [];
-  let seed = choiceSeed(state, 0x9e3779b9);
+  let seed = choiceSeed(state, player, 0x9e3779b9);
 
   if (owned.length > 0) {
     seed = addSeededChoice(choices, owned, seed);
@@ -264,7 +288,7 @@ export function createUpgradeChoices(state: GameState): UpgradeChoice[] {
   if (fresh.length > 0) {
     seed = addSeededChoice(choices, fresh, seed);
   }
-  addSeededChoices(choices, available, seed, 3);
+  addSeededChoices(choices, choicePool, seed, 3);
   return choices;
 }
 
@@ -272,13 +296,13 @@ export function isInsightChoice(choice: UpgradeChoice): choice is InsightId {
   return choice.startsWith('insight:');
 }
 
-export function applyInsight(state: GameState, insight: InsightId): void {
-  state.player.insightLevels[insight] += 1;
-  recalculatePlayerBuild(state.player);
+export function applyInsight(state: GameState, insight: InsightId, player: Player = state.player): void {
+  player.insightLevels[insight] += 1;
+  recalculatePlayerBuild(player);
 }
 
 export function createTreasureChoices(state: GameState): UpgradeId[] {
-  const available = getAvailable(state);
+  const available = getAvailable(state.player);
   const owned = available
     .filter((id) => state.player.upgradeLevels[id] > 0)
     .sort((a, b) => {
@@ -288,7 +312,7 @@ export function createTreasureChoices(state: GameState): UpgradeId[] {
     });
   const fresh = available.filter((id) => state.player.upgradeLevels[id] === 0);
   const choices: UpgradeId[] = [];
-  let seed = choiceSeed(state, 0x85ebca6b);
+  let seed = choiceSeed(state, state.player, 0x85ebca6b);
 
   for (const pool of [owned, fresh]) {
     while (choices.length < 3 && pool.some((id) => !choices.includes(id))) {
@@ -298,37 +322,37 @@ export function createTreasureChoices(state: GameState): UpgradeId[] {
   return choices;
 }
 
-export function applyUpgrade(state: GameState, upgrade: UpgradeId): UpgradeResult {
-  const currentLevel = state.player.upgradeLevels[upgrade];
+export function applyUpgrade(state: GameState, upgrade: UpgradeId, player: Player = state.player): UpgradeResult {
+  const currentLevel = player.upgradeLevels[upgrade];
   const maxLevel = getUpgradeMaxLevel(upgrade);
-  if (currentLevel >= maxLevel || !canEquipUpgrade(state.player, upgrade)) {
+  if (currentLevel >= maxLevel || !canEquipUpgrade(player, upgrade)) {
     return { previousLevel: currentLevel, level: currentLevel, awakened: false };
   }
   const level = currentLevel + 1;
   const awakened = level === maxLevel;
-  const equipped = getEquippedForKind(state.player, getUpgradeKind(upgrade));
+  const equipped = getEquippedForKind(player, getUpgradeKind(upgrade));
   if (currentLevel === 0 && !equipped.includes(upgrade)) {
     equipped.push(upgrade);
   }
-  const previousHp = state.player.hp;
-  state.player.upgradeLevels[upgrade] = level;
-  recalculatePlayerBuild(state.player);
+  const previousHp = player.hp;
+  player.upgradeLevels[upgrade] = level;
+  recalculatePlayerBuild(player);
   if (upgrade === 'golden-shield') {
-    state.player.shield = state.player.maxShield;
+    player.shield = player.maxShield;
   } else if (upgrade === 'vital-breath') {
-    state.player.hp = awakened
-      ? state.player.maxHp
-      : Math.min(state.player.maxHp, previousHp + 20);
+    player.hp = awakened
+      ? player.maxHp
+      : Math.min(player.maxHp, previousHp + 20);
   }
   return { previousLevel: currentLevel, level, awakened };
 }
 
-function getAvailable(state: GameState): UpgradeId[] {
-  return UPGRADE_IDS.filter((id) => state.player.upgradeLevels[id] < getUpgradeMaxLevel(id));
+function getAvailable(player: Player): UpgradeId[] {
+  return UPGRADE_IDS.filter((id) => player.upgradeLevels[id] < getUpgradeMaxLevel(id));
 }
 
-function choiceSeed(state: GameState, salt: number): number {
-  return (state.runSeed + state.player.level * salt + state.bossesDefeated * 0xc2b2ae35) >>> 0;
+function choiceSeed(state: GameState, player: Player, salt: number): number {
+  return (state.runSeed + player.level * salt + state.bossesDefeated * 0xc2b2ae35 + player.upgradeChoiceSalt) >>> 0;
 }
 
 function nextSeed(seed: number): number {

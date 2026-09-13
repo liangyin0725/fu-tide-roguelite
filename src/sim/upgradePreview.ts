@@ -39,6 +39,21 @@ const METRICS: Record<UpgradeId, Metric[]> = {
     { label: '反击伤害', key: 'mirrorSigilDamage' },
     { label: '反照范围', key: 'mirrorSigilRadius' },
   ],
+  'frost-domain': [
+    { label: '禁域间隔', key: 'frostDomainCooldownMs', scale: 0.001, suffix: '秒' },
+    { label: '禁域范围', key: 'frostDomainRadius' },
+    { label: '禁域伤害', key: 'frostDomainDamage' },
+  ],
+  'rift-return': [
+    { label: '回环间隔', key: 'riftReturnCooldownMs', scale: 0.001, suffix: '秒' },
+    { label: '往返伤害', key: 'riftReturnDamage' },
+    { label: '回环射程', key: 'riftReturnRange' },
+  ],
+  'star-pull': [
+    { label: '法阵间隔', key: 'starPullCooldownMs', scale: 0.001, suffix: '秒' },
+    { label: '法阵范围', key: 'starPullRadius' },
+    { label: '法阵伤害', key: 'starPullDamage' },
+  ],
   'chain-lightning': [
     { label: '连锁伤害', key: 'chainLightningDamage' },
     { label: '连锁目标', key: 'chainLightningTargets' },

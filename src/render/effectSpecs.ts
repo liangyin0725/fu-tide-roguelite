@@ -37,9 +37,14 @@ export type EffectKind =
   | 'elite'
   | 'tribulation'
   | 'tribulation-choice'
+  | 'tribulation-seal'
   | 'objective'
+  | 'objective-field'
   | 'synergy'
-  | 'glyph';
+  | 'glyph'
+  | 'frost-domain'
+  | 'rift-return'
+  | 'star-pull';
 
 export interface EffectSpec {
   kind: EffectKind;
@@ -123,6 +128,12 @@ export function createEffectSpecs(events: CombatEvent[]): EffectSpec[] {
         return { kind: 'reprisal', durationMs: 440, event };
       case 'soul-pinned':
         return { kind: 'soul-pin', durationMs: event.awakened ? 760 : 360, event };
+      case 'frost-domain':
+        return { kind: 'frost-domain', durationMs: event.awakened ? 1180 : 860, event };
+      case 'rift-return':
+        return { kind: 'rift-return', durationMs: event.awakened ? 680 : 500, event };
+      case 'star-pull':
+        return { kind: 'star-pull', durationMs: event.awakened ? 1180 : 860, event };
       case 'ranged-windup':
         return { kind: 'ranged-windup', durationMs: 520, event };
       case 'enemy-bullet-fired':
@@ -143,10 +154,16 @@ export function createEffectSpecs(events: CombatEvent[]): EffectSpec[] {
         return { kind: 'tribulation-choice', durationMs: 1100, event };
       case 'tribulation-choice-selected':
         return { kind: 'tribulation-choice', durationMs: 850, event };
+      case 'tribulation-seal-gained':
+        return { kind: 'tribulation-seal', durationMs: 1200, event };
+      case 'tribulation-seal-triggered':
+        return { kind: 'tribulation-seal', durationMs: 620, event };
       case 'objective-spawned':
         return { kind: 'objective', durationMs: 1200, event };
       case 'objective-resolved':
         return { kind: 'objective', durationMs: 1000, event };
+      case 'objective-field-activated':
+        return { kind: 'objective-field', durationMs: 1300, event };
       case 'synergy-triggered':
         return { kind: 'synergy', durationMs: 680, event };
     }

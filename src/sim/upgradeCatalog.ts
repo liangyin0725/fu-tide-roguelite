@@ -18,6 +18,9 @@ export const SKILL_IDS = [
   'spirit-sword-rain',
   'storm-net',
   'mirror-sigil',
+  'frost-domain',
+  'rift-return',
+  'star-pull',
 ] as const satisfies readonly UpgradeId[];
 
 export const ENHANCEMENT_IDS = [
