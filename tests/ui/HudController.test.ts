@@ -293,15 +293,15 @@ describe('HudController', () => {
     state.phase = 'awakening';
     state.awakeningNotice = {
       upgrade: 'faster-swords',
-      skillName: '疾风飞剑',
-      awakeningName: '无间剑域',
-      summary: ['攻击间隔额外缩短 40%', '最低攻击间隔降至 120ms'],
+      skillName: '灵息回流',
+      awakeningName: '万法回环',
+      summary: ['所有技能冷却缩短 32%', '主动与被动技能施放更频繁'],
     };
 
     hud.render(state, { ...DEFAULT_GAME_SETTINGS, language: 'en' }, false);
 
-    expect(root.textContent).toContain('Infinite Sword Domain');
-    expect(root.textContent).toContain('Attack interval reduced by an additional 40%.');
+    expect(root.textContent).toContain('Cycle of Ten Thousand Arts');
+    expect(root.textContent).toContain('All skill cooldowns -32%.');
   });
 
   it('shows each acquired tribulation seal and its rank in the combat HUD', () => {

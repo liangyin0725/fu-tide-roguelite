@@ -33,9 +33,10 @@ import {
   recalculatePlayerBuild,
 } from './loadout';
 import { getUpgradeKind } from './upgradeCatalog';
+import { getAwakenedSkills, isUpgradeAwakened } from './awakening';
 import { hasSynergy } from './synergies';
 import { createEliteSquadBlueprint } from './eliteSquads';
-import { getTribulationAt, TRIBULATION_MODIFIERS } from './tribulations';
+import { getTribulationAt, TRIBULATION_DURATION_MS, TRIBULATION_MODIFIERS } from './tribulations';
 import { getTribulationChoices, getTribulationChoiceModifiers } from './tribulationChoices';
 import {
   getRangedSpawnRatio,
@@ -118,6 +119,7 @@ export class GameSimulation {
     this.state.arena.height = COOP_ARENA_HEIGHT;
     player.skillSlotLimit = 4;
     player.enhancementSlotLimit = 4;
+    this.state.nextCoopUpgradePlayerId = 'p1';
     this.state.partner = {
       ...player,
       id: 'p2',
@@ -186,7 +188,13 @@ export class GameSimulation {
     }
     this.state.pendingUpgradePlayerId = nextPlayerId;
     const excludedChoices = nextPlayerId === 'p2' ? this.state.lastCoopUpgradeChoices : [];
-    this.state.upgradeChoices = createUpgradeChoices(this.state, player, excludedChoices);
+    const otherPlayer = nextPlayerId === 'p2' ? this.state.player : this.state.partner;
+    this.state.upgradeChoices = createUpgradeChoices(
+      this.state,
+      player,
+      excludedChoices,
+      otherPlayer?.equippedSkills ?? [],
+    );
     if (nextPlayerId === 'p1') this.state.lastCoopUpgradeChoices = [...this.state.upgradeChoices];
     this.state.phase = this.state.upgradeChoices.length > 0 ? 'upgrade' : 'playing';
   }
@@ -270,6 +278,21 @@ export class GameSimulation {
         this.state.player.hp + this.state.player.hpRegenPerSecond * (deltaMs / 1000),
       );
     }
+    if (this.state.partner && !this.state.partner.downed) {
+      this.state.partner.invulnerableMs = Math.max(0, this.state.partner.invulnerableMs - deltaMs);
+      this.state.partner.activeCooldownRemainingMs = Math.max(
+        0,
+        this.state.partner.activeCooldownRemainingMs - deltaMs,
+      );
+      this.state.partner.activeBarrierRemainingMs = Math.max(
+        0,
+        this.state.partner.activeBarrierRemainingMs - deltaMs,
+      );
+      this.state.partner.hp = Math.min(
+        this.state.partner.maxHp,
+        this.state.partner.hp + this.state.partner.hpRegenPerSecond * (deltaMs / 1000),
+      );
+    }
 
     this.spawnDueBosses();
     this.spawnEliteSquads();
@@ -338,12 +361,12 @@ export class GameSimulation {
   public spawnEnemy(options: EnemySpawnOptions): Enemy {
     const baseHp = options.hp ?? 24;
     const eliteHpMultiplier = options.eliteAffix === 'iron-wall'
-      ? 3
-      : options.eliteAffix ? 2.2 : 1;
+      ? 3.4
+      : options.eliteAffix ? 2.5 : 1;
     const hp = baseHp * eliteHpMultiplier;
     const baseSpeed = options.speed ?? 88;
     const eliteSpeedMultiplier = options.eliteAffix === 'haste'
-      ? 1.55
+      ? 1.7
       : options.eliteAffix === 'iron-wall' ? 0.85 : 1;
     const enemy: Enemy = {
       id: this.takeId(),
@@ -353,8 +376,8 @@ export class GameSimulation {
       hp,
       maxHp: hp,
       speed: baseSpeed * eliteSpeedMultiplier,
-      damage: (options.damage ?? 9) * (options.eliteAffix ? 1.25 : 1),
-      experience: (options.experience ?? 3) * (options.eliteAffix ? 3 : 1),
+      damage: (options.damage ?? 9) * (options.eliteAffix ? 1.4 : 1),
+      experience: (options.experience ?? 3) * (options.eliteAffix ? 3.5 : 1),
       kind: options.kind ?? 'normal',
       archetype: options.kind === 'boss' ? 'melee' : options.archetype ?? 'melee',
       rangedAttackTimerMs: 0,
@@ -394,10 +417,20 @@ export class GameSimulation {
       return;
     }
 
+    const otherPlayer = this.state.pendingUpgradePlayerId === 'p2' ? this.state.player : this.state.partner;
+    if (
+      this.state.coopEnabled
+      && getUpgradeKind(upgrade) === 'skill'
+      && (otherPlayer?.upgradeLevels[upgrade] ?? 0) > 0
+    ) return;
+
+    const awakenedBefore = new Set(getAwakenedSkills(player));
     const result = applyUpgrade(this.state, upgrade, player);
+    const newlyAwakenedSkill = getAwakenedSkills(player).find((skill) => !awakenedBefore.has(skill));
     this.state.upgradeChoices = [];
-    if (result.awakened && player === this.state.player) {
-      this.beginAwakening(upgrade);
+    const awakeningUpgrade = newlyAwakenedSkill ?? (result.awakened ? upgrade : null);
+    if (awakeningUpgrade && player === this.state.player) {
+      this.beginAwakening(awakeningUpgrade);
     } else {
       this.showNextCoopUpgradeOrResume();
     }
@@ -424,7 +457,7 @@ export class GameSimulation {
     this.state.activeTribulationChoiceId = choice;
     this.state.tribulationChoices = [];
     while (this.state.nextTribulationChoiceAtMs <= this.state.elapsedMs) {
-      this.state.nextTribulationChoiceAtMs += 300_000;
+      this.state.nextTribulationChoiceAtMs += TRIBULATION_DURATION_MS;
     }
     this.state.phase = 'playing';
     this.events.push({
@@ -533,11 +566,14 @@ export class GameSimulation {
       return;
     }
 
+    const awakenedBefore = new Set(getAwakenedSkills(player));
     const result = applyUpgrade(this.state, upgrade);
+    const newlyAwakenedSkill = getAwakenedSkills(player).find((skill) => !awakenedBefore.has(skill));
     this.state.treasureChoices = [];
     this.state.treasureWave = null;
-    if (result.awakened) {
-      this.beginAwakening(upgrade);
+    const awakeningUpgrade = newlyAwakenedSkill ?? (result.awakened ? upgrade : null);
+    if (awakeningUpgrade) {
+      this.beginAwakening(awakeningUpgrade);
     } else {
       this.state.phase = 'playing';
     }
@@ -557,15 +593,21 @@ export class GameSimulation {
     ) {
       return;
     }
+    const awakenedBefore = new Set(getAwakenedSkills(player));
     const removed = equipped[slotIndex];
     player.upgradeLevels[removed] = 0;
     player.upgradeLevels[pending] = 1;
     equipped[slotIndex] = pending;
     recalculatePlayerBuild(player);
+    const newlyAwakenedSkill = getAwakenedSkills(player).find((skill) => !awakenedBefore.has(skill));
     this.state.pendingTreasureUpgrade = null;
     this.state.treasureChoices = [];
     this.state.treasureWave = null;
-    this.state.phase = 'playing';
+    if (newlyAwakenedSkill) {
+      this.beginAwakening(newlyAwakenedSkill);
+    } else {
+      this.state.phase = 'playing';
+    }
   }
 
   public cancelTreasureReplacement(): void {
@@ -672,21 +714,38 @@ export class GameSimulation {
     for (const elite of this.state.enemies) {
       if (!elite.eliteAffix || elite.hp <= 0) continue;
       elite.eliteTimerMs = (elite.eliteTimerMs ?? 0) + deltaMs;
-      if (elite.eliteAffix === 'mender' && elite.eliteTimerMs >= 4000) {
-        elite.eliteTimerMs %= 4000;
+      if (elite.eliteAffix === 'mender' && elite.eliteTimerMs >= 3000) {
+        elite.eliteTimerMs %= 3000;
         for (const ally of this.state.enemies) {
           if (ally.hp > 0 && distance(ally, elite) <= 180) {
-            ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * 0.08);
+            ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * 0.12);
           }
         }
         this.events.push({ type: 'elite-effect', x: elite.x, y: elite.y, affix: 'mender' });
       }
-      if (
-        elite.eliteAffix === 'suppressor'
-        && distance(elite, this.state.player) <= 180
-        && this.state.player.activeCooldownRemainingMs > 0
-      ) {
-        this.state.player.activeCooldownRemainingMs += deltaMs * 0.35;
+      if (elite.eliteAffix === 'haste' && elite.eliteTimerMs >= 2800) {
+        elite.eliteTimerMs %= 2800;
+        const target = this.getNearestLivingPlayerEntity(elite);
+        const dx = target.x - elite.x;
+        const dy = target.y - elite.y;
+        const length = Math.hypot(dx, dy) || 1;
+        elite.x = clamp(elite.x + dx / length * 130, elite.radius, this.state.arena.width - elite.radius);
+        elite.y = clamp(elite.y + dy / length * 130, elite.radius, this.state.arena.height - elite.radius);
+        this.events.push({ type: 'elite-effect', x: elite.x, y: elite.y, affix: 'haste' });
+      }
+      if (elite.eliteAffix === 'suppressor' && elite.eliteTimerMs >= 2200) {
+        elite.eliteTimerMs %= 2200;
+        const players = [
+          !this.state.playerDowned ? this.state.player : null,
+          this.state.partner && !this.state.partner.downed ? this.state.partner : null,
+        ].filter((player): player is Player => player !== null);
+        const affected = players.filter((player) => distance(elite, player) <= 220);
+        for (const player of affected) {
+          player.activeCooldownRemainingMs = Math.max(player.activeCooldownRemainingMs, 1200);
+        }
+        if (affected.length > 0) {
+          this.events.push({ type: 'elite-effect', x: elite.x, y: elite.y, affix: 'suppressor' });
+        }
       }
     }
   }
@@ -707,7 +766,7 @@ export class GameSimulation {
 
   private offerTribulationChoice(): boolean {
     while (this.state.nextTribulationChoiceAtMs < this.state.elapsedMs - 1_000) {
-      this.state.nextTribulationChoiceAtMs += 300_000;
+      this.state.nextTribulationChoiceAtMs += TRIBULATION_DURATION_MS;
     }
     if (
       this.state.tribulation === 'calm'
@@ -715,7 +774,7 @@ export class GameSimulation {
     ) return false;
     const tribulation = this.state.tribulation;
     this.state.tribulationChoices = getTribulationChoices(tribulation);
-    this.state.nextTribulationChoiceAtMs += 300_000;
+    this.state.nextTribulationChoiceAtMs += TRIBULATION_DURATION_MS;
     this.state.phase = 'tribulation-choice';
     this.events.push({
       type: 'tribulation-choice-offered',
@@ -1198,7 +1257,7 @@ export class GameSimulation {
 
   private castAwakeningGlyphs(deltaMs: number): void {
     const player = this.state.player;
-    const glyphs = player.equippedSkills.filter((upgrade) => player.upgradeLevels[upgrade] >= 6);
+    const glyphs = getAwakenedSkills(player);
     if (glyphs.length === 0) {
       this.state.awakeningGlyphTimerMs = 0;
       this.state.awakeningGlyphVolleyCount = 0;
@@ -1207,8 +1266,8 @@ export class GameSimulation {
 
     this.state.awakeningGlyphTimerMs += deltaMs;
     const formation = getGlyphFormation(glyphs);
-    while (this.state.awakeningGlyphTimerMs >= 1400) {
-      this.state.awakeningGlyphTimerMs -= 1400;
+    while (this.state.awakeningGlyphTimerMs >= 900) {
+      this.state.awakeningGlyphTimerMs -= 900;
       const target = this.state.enemies
         .filter((enemy) => enemy.hp > 0)
         .sort((a, b) => distance(a, player) - distance(b, player))[0];
@@ -1231,10 +1290,10 @@ export class GameSimulation {
           y,
           vx: Math.cos(direction) * PROJECTILE_SPEED * 0.78,
           vy: Math.sin(direction) * PROJECTILE_SPEED * 0.78,
-          radius: 4,
-          damage: player.attackDamage * 0.7,
+          radius: 5,
+          damage: player.attackDamage * 0.95,
           ttlMs: 900,
-          pierceRemaining: 1,
+          pierceRemaining: 2,
           hitEnemyIds: [],
           kind: 'glyph',
           source: 'glyph',
@@ -1242,7 +1301,7 @@ export class GameSimulation {
       }
 
       this.state.awakeningGlyphVolleyCount += 1;
-      const ritual = this.state.awakeningGlyphVolleyCount % 3 === 0
+      const ritual = this.state.awakeningGlyphVolleyCount % 2 === 0
         ? this.triggerGlyphRitual(glyphs, target, formation)
         : 'bolt';
       this.events.push({ type: 'glyph-volley', x: player.x, y: player.y, count: glyphs.length, ritual, formation });
@@ -1442,7 +1501,7 @@ export class GameSimulation {
       x: player.x,
       y: player.y,
       count,
-      awakened: player.upgradeLevels['north-star'] >= 6,
+      awakened: isUpgradeAwakened(player, 'north-star'),
     });
   }
 
@@ -1477,7 +1536,7 @@ export class GameSimulation {
     this.dealDamage(target, player.solarRayDamage, 'solar-ray');
     this.events.push({
       type: 'chain-lightning', fromX: player.x, fromY: player.y, toX: target.x, toY: target.y,
-      awakened: player.upgradeLevels['solar-ray'] >= 6, style: 'solar-ray',
+      awakened: isUpgradeAwakened(player, 'solar-ray'), style: 'solar-ray',
     });
     if ((target.solarMarkUntilMs ?? 0) > this.state.elapsedMs) {
       target.solarMarkUntilMs = 0;
@@ -1536,7 +1595,7 @@ export class GameSimulation {
     }
     this.events.push({
       type: 'bullet-reprisal', x: player.x, y: player.y, radius: player.voidBellRadius,
-      awakened: player.upgradeLevels['void-bell'] >= 6, style: 'void-bell',
+      awakened: isUpgradeAwakened(player, 'void-bell'), style: 'void-bell',
     });
     if (eclipseSanctum && affectedEnemies > 0) {
       this.events.push({ type: 'synergy-triggered', x: player.x, y: player.y, synergy: 'eclipse-sanctum' });
@@ -1566,7 +1625,7 @@ export class GameSimulation {
         target.solarMarkUntilMs = this.state.elapsedMs + 5_000;
         this.events.push({
           type: 'chain-lightning', fromX: player.x, fromY: player.y, toX: target.x, toY: target.y,
-          awakened: player.upgradeLevels['solar-ray'] >= 6, style: 'solar-ray',
+          awakened: isUpgradeAwakened(player, 'solar-ray'), style: 'solar-ray',
         });
       }
       if (gildedSwordRain) {
@@ -1578,7 +1637,7 @@ export class GameSimulation {
       }
       this.events.push({
         type: 'meteor-strike', x: target.x, y: target.y, damage: player.swordRainDamage,
-        awakened: player.upgradeLevels['spirit-sword-rain'] >= 6, style: 'sword-rain',
+        awakened: isUpgradeAwakened(player, 'spirit-sword-rain'), style: 'sword-rain',
       });
       hits += 1;
     }
@@ -1648,7 +1707,7 @@ export class GameSimulation {
     player.frostDomainTimerMs += deltaMs;
     if (player.frostDomainTimerMs < player.frostDomainCooldownMs) return;
     player.frostDomainTimerMs %= player.frostDomainCooldownMs;
-    const awakened = player.upgradeLevels['frost-domain'] >= 6;
+    const awakened = isUpgradeAwakened(player, 'frost-domain');
     for (const enemy of this.state.enemies) {
       if (enemy.hp <= 0 || distance(enemy, player) > player.frostDomainRadius) continue;
       this.dealDamage(enemy, player.frostDomainDamage, 'chain');
@@ -1734,11 +1793,15 @@ export class GameSimulation {
   private collectExperience(): void {
     const remaining = [];
     for (const shard of this.state.shards) {
-      if (distance(shard, this.state.player) <= this.state.player.pickupRadius) {
+      const pickedUpByPlayer = distance(shard, this.state.player) <= this.state.player.pickupRadius;
+      const pickedUpByPartner = this.state.partner
+        && !this.state.partner.downed
+        && distance(shard, this.state.partner) <= this.state.partner.pickupRadius;
+      if (pickedUpByPlayer || pickedUpByPartner) {
         const experience = shard.value
-          * this.state.player.experienceMultiplier
-          * getTribulationChoiceModifiers(this.state.activeTribulationChoiceId).experience;
-        this.state.player.experience += experience;
+          * getTribulationChoiceModifiers(this.state.activeTribulationChoiceId).experience
+          * (this.state.coopEnabled ? 1.25 : 1);
+        this.state.player.experience += experience * this.state.player.experienceMultiplier;
         if (this.state.partner && !this.state.partner.downed) {
           this.state.partner.experience += experience * this.state.partner.experienceMultiplier;
         }
@@ -1754,9 +1817,18 @@ export class GameSimulation {
       this.collectPlayerLevels(this.state.partner, 'p2', levelUps);
     }
     if (levelUps.length > 0) {
-      this.state.coopUpgradeQueue.push(...levelUps);
+      const upgradeRecipients = this.state.coopEnabled
+        ? levelUps.map(() => this.takeNextCoopUpgradePlayerId())
+        : levelUps;
+      this.state.coopUpgradeQueue.push(...upgradeRecipients);
       this.showNextCoopUpgradeOrResume();
     }
+  }
+
+  private takeNextCoopUpgradePlayerId(): 'p1' | 'p2' {
+    const nextPlayerId = this.state.nextCoopUpgradePlayerId;
+    this.state.nextCoopUpgradePlayerId = nextPlayerId === 'p1' ? 'p2' : 'p1';
+    return nextPlayerId;
   }
 
   private collectPlayerLevels(player: Player, id: 'p1' | 'p2', queue: Array<'p1' | 'p2'>): void {
@@ -1822,8 +1894,8 @@ export class GameSimulation {
             objective: enemy.objectiveKind,
             expiresAtMs: fieldExpiresAtMs,
           });
-          this.events.push({ type: 'spirit-ore-earned', x: enemy.x, y: enemy.y, source: 'objective', amount: 1 });
           if (isFinalLink) {
+            this.events.push({ type: 'spirit-ore-earned', x: enemy.x, y: enemy.y, source: 'objective', amount: 1 });
             const chestCount = 1 + this.state.objectiveChainRiskLevel;
             for (let index = 0; index < chestCount; index += 1) {
               const angle = chestCount === 1 ? 0 : index * Math.PI * 2 / chestCount;
@@ -1973,7 +2045,7 @@ export class GameSimulation {
     }
     this.events.push({ type: 'chest-dropped', x: enemy.x, y: enemy.y, wave });
     this.events.push({ type: 'dao-yun-earned', x: enemy.x, y: enemy.y, wave, amount: 1 });
-    this.events.push({ type: 'spirit-ore-earned', x: enemy.x, y: enemy.y, source: 'boss', amount: 2 });
+    this.events.push({ type: 'spirit-ore-earned', x: enemy.x, y: enemy.y, source: 'boss', amount: 1 });
     this.events.push({
       type: 'boss-reward-burst',
       x: enemy.x,
@@ -1992,7 +2064,7 @@ export class GameSimulation {
         source: 'survival',
         amount: 1,
       });
-      this.state.nextSpiritOreAtMs += 300000;
+      this.state.nextSpiritOreAtMs += 600000;
     }
   }
 
@@ -2078,7 +2150,7 @@ export class GameSimulation {
           fromY: primary.y,
           toX: target.x,
           toY: target.y,
-          awakened: this.state.player.upgradeLevels['chain-lightning'] >= 6,
+          awakened: isUpgradeAwakened(this.state.player, 'chain-lightning'),
         });
       }
     }
@@ -2098,7 +2170,7 @@ export class GameSimulation {
       }
       this.events.push({
         type: 'fire-burst', x: primary.x, y: primary.y, radius,
-        awakened: this.state.player.upgradeLevels['fire-burst'] >= 6,
+        awakened: isUpgradeAwakened(this.state.player, 'fire-burst'),
       });
       if (frostfire) {
         for (const enemy of this.state.enemies) {
@@ -2153,7 +2225,7 @@ export class GameSimulation {
         x: target.x,
         y: target.y,
         damage: this.state.player.meteorDamage,
-        awakened: this.state.player.upgradeLevels['meteor-seal'] >= 6,
+        awakened: isUpgradeAwakened(this.state.player, 'meteor-seal'),
       });
       if (hasSynergy(this.state.player, 'starfall-convergence')) {
         for (let index = 0; index < 8; index += 1) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createDefaultState } from '../../src/sim/state';
 import { applyUpgrade } from '../../src/sim/upgrades';
 import { SKILL_IDS } from '../../src/sim/upgradeCatalog';
+import { getAwakeningRequirement, isUpgradeAwakened } from '../../src/sim/awakening';
 
 describe('six-level skill progression', () => {
   it('increases every skill at levels one through five and awakens only at six', () => {
@@ -10,7 +11,12 @@ describe('six-level skill progression', () => {
       const results = Array.from({ length: 7 }, () => applyUpgrade(state, skill));
 
       expect(results.slice(0, 5).every((result) => !result.awakened), skill).toBe(true);
-      expect(results[5], skill).toEqual({ previousLevel: 5, level: 6, awakened: true });
+      const requirement = getAwakeningRequirement(skill);
+      expect(results[5], skill).toEqual({ previousLevel: 5, level: 6, awakened: requirement === null });
+      if (requirement) {
+        applyUpgrade(state, requirement);
+        expect(isUpgradeAwakened(state.player, skill), skill).toBe(true);
+      }
       expect(results[6], skill).toEqual({ previousLevel: 6, level: 6, awakened: false });
     }
   });
@@ -25,6 +31,7 @@ describe('six-level skill progression', () => {
     for (let level = 0; level < 5; level += 1) applyUpgrade(state, 'meteor-seal');
     expect(state.player.meteorCooldownMs).toBe(4200);
     expect(state.player.meteorDamage).toBe(85);
+    applyUpgrade(state, 'boss-slayer');
     applyUpgrade(state, 'meteor-seal');
     expect(state.player).toMatchObject({ meteorCooldownMs: 3600, meteorCount: 3, meteorDamage: 105 });
   });

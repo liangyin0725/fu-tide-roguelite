@@ -23,7 +23,13 @@ export function createEmptyRunStats(): RunStats {
 
 export function dealPlayerDamage(state: GameState, enemy: Enemy, damage: number, source: DamageSource): number {
   const bossMultiplier = enemy.kind === 'boss' ? state.player.bossDamageMultiplier : 1;
-  const eliteReduction = enemy.eliteAffix === 'iron-wall' ? 0.7 : 1;
+  const protectedByIronWall = state.enemies.some((candidate) => (
+    candidate.id !== enemy.id
+    && candidate.hp > 0
+    && candidate.eliteAffix === 'iron-wall'
+    && Math.hypot(candidate.x - enemy.x, candidate.y - enemy.y) <= 190
+  ));
+  const eliteReduction = enemy.eliteAffix === 'iron-wall' ? 0.6 : protectedByIronWall ? 0.75 : 1;
   const choiceMultiplier = getTribulationChoiceModifiers(state.activeTribulationChoiceId).playerDamage;
   const finalDamage = damage * bossMultiplier * eliteReduction * choiceMultiplier;
   const dealt = Math.max(0, Math.min(enemy.hp, finalDamage));

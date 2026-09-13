@@ -1,5 +1,6 @@
 import type { Player, UpgradeId } from './types';
 import { getUpgradeKind, type UpgradeKind } from './upgradeCatalog';
+import { isUpgradeAwakened } from './awakening';
 import { applyMetaTalents } from '../meta/metaProgression';
 
 export const MAX_SKILL_SLOTS = 5;
@@ -62,6 +63,7 @@ export function recalculatePlayerBuild(player: Player): void {
     player.voidBellCooldownMs *= 0.88;
   }
   applyMetaTalents(player);
+  applySkillCooldownReduction(player);
   player.hp = Math.min(currentHp, player.maxHp);
   player.shield = Math.min(currentShield, player.maxShield);
   if (!player.equippedSkills.includes('north-star')) player.northStarTimerMs = 0;
@@ -109,6 +111,7 @@ function resetDerivedStats(player: Player): void {
   player.bulletReprisalDamage = 0;
   player.bulletReprisalRadius = 0;
   player.bulletReprisalChains = 0;
+  player.skillCooldownReduction = 0;
   player.activeCooldownMultiplier = 1;
   player.activeCastHeal = 0;
   player.activeCastShield = 0;
@@ -151,12 +154,13 @@ function resetDerivedStats(player: Player): void {
 
 export function applyUpgradeLevelEffects(player: Player, upgrade: UpgradeId, level: number): void {
   if (level <= 0) return;
-  const skillAwakened = level >= 6;
+  const skillAwakened = isUpgradeAwakened(player, upgrade);
+  const skillLevel = Math.min(level, 5);
   const enhancementAwakened = level >= 4;
   const enhancementLevels = Math.min(level, 3);
   switch (upgrade) {
     case 'faster-swords':
-      player.attackCooldownMs = 650 * 0.82 ** enhancementLevels * (enhancementAwakened ? 0.6 : 1);
+      player.skillCooldownReduction = Math.min(0.32, level * 0.08);
       break;
     case 'heavier-swords':
       player.attackDamage = 18 + enhancementLevels * 8 + (enhancementAwakened ? 36 : 0);
@@ -211,9 +215,9 @@ export function applyUpgradeLevelEffects(player: Player, upgrade: UpgradeId, lev
       player.orbitingBladeRadius = skillAwakened ? 88 : 62;
       break;
     case 'meteor-seal':
-      player.meteorCooldownMs = skillAwakened ? 3600 : [7000, 6000, 5000, 4600, 4200][level - 1] ?? 0;
+      player.meteorCooldownMs = skillAwakened ? 3600 : [7000, 6000, 5000, 4600, 4200][skillLevel - 1] ?? 0;
       player.meteorCount = skillAwakened ? 3 : 1;
-      player.meteorDamage = skillAwakened ? 105 : [35, 50, 65, 75, 85][level - 1] ?? 0;
+      player.meteorDamage = skillAwakened ? 105 : [35, 50, 65, 75, 85][skillLevel - 1] ?? 0;
       break;
     case 'boss-slayer':
       player.bossDamageMultiplier = enhancementAwakened ? 2 : [1.15, 1.3, 1.45][enhancementLevels - 1] ?? 1;
@@ -241,9 +245,9 @@ export function applyUpgradeLevelEffects(player: Player, upgrade: UpgradeId, lev
       player.soulPinPulseCooldownMs = skillAwakened ? 5000 : 0;
       break;
     case 'solar-ray':
-      player.solarRayCooldownMs = skillAwakened ? 3000 : [5000, 4600, 4200, 3900, 3600][level - 1] ?? 0;
-      player.solarRayDamage = skillAwakened ? 110 : [35, 45, 55, 65, 75][level - 1] ?? 0;
-      player.solarRayRange = skillAwakened ? 600 : [420, 450, 480, 510, 540][level - 1] ?? 0;
+      player.solarRayCooldownMs = skillAwakened ? 3000 : [5000, 4600, 4200, 3900, 3600][skillLevel - 1] ?? 0;
+      player.solarRayDamage = skillAwakened ? 110 : [35, 45, 55, 65, 75][skillLevel - 1] ?? 0;
+      player.solarRayRange = skillAwakened ? 600 : [420, 450, 480, 510, 540][skillLevel - 1] ?? 0;
       break;
     case 'void-bell':
       player.voidBellCooldownMs = skillAwakened ? 3800 : [7000, 6400, 5800, 5200, 4700][level - 1] ?? 0;
@@ -252,9 +256,9 @@ export function applyUpgradeLevelEffects(player: Player, upgrade: UpgradeId, lev
       player.voidBellBreaksBullets = skillAwakened;
       break;
     case 'spirit-sword-rain':
-      player.swordRainCooldownMs = skillAwakened ? 3200 : [6000, 5500, 5000, 4500, 4000][level - 1] ?? 0;
-      player.swordRainDamage = skillAwakened ? 55 : [18, 24, 30, 36, 42][level - 1] ?? 0;
-      player.swordRainCount = skillAwakened ? 8 : [3, 4, 5, 6, 7][level - 1] ?? 0;
+      player.swordRainCooldownMs = skillAwakened ? 3200 : [6000, 5500, 5000, 4500, 4000][skillLevel - 1] ?? 0;
+      player.swordRainDamage = skillAwakened ? 55 : [18, 24, 30, 36, 42][skillLevel - 1] ?? 0;
+      player.swordRainCount = skillAwakened ? 8 : [3, 4, 5, 6, 7][skillLevel - 1] ?? 0;
       break;
     case 'storm-net':
       player.stormNetCooldownMs = skillAwakened ? 3800 : [8000, 7000, 6200, 5500, 4800][level - 1] ?? 0;
@@ -275,9 +279,9 @@ export function applyUpgradeLevelEffects(player: Player, upgrade: UpgradeId, lev
       player.frostDomainFreezeMs = skillAwakened ? 950 : level >= 4 ? 420 : 0;
       break;
     case 'rift-return':
-      player.riftReturnCooldownMs = skillAwakened ? 3000 : [6800, 6000, 5300, 4600, 3800][level - 1] ?? 0;
-      player.riftReturnDamage = skillAwakened ? 86 : [24, 34, 44, 54, 66][level - 1] ?? 0;
-      player.riftReturnRange = skillAwakened ? 620 : [360, 410, 460, 510, 560][level - 1] ?? 0;
+      player.riftReturnCooldownMs = skillAwakened ? 3000 : [6800, 6000, 5300, 4600, 3800][skillLevel - 1] ?? 0;
+      player.riftReturnDamage = skillAwakened ? 86 : [24, 34, 44, 54, 66][skillLevel - 1] ?? 0;
+      player.riftReturnRange = skillAwakened ? 620 : [360, 410, 460, 510, 560][skillLevel - 1] ?? 0;
       player.riftReturnEchoes = skillAwakened ? 2 : 0;
       break;
     case 'star-pull':
@@ -287,5 +291,27 @@ export function applyUpgradeLevelEffects(player: Player, upgrade: UpgradeId, lev
       player.starPullForce = skillAwakened ? 190 : [72, 92, 112, 132, 152][level - 1] ?? 0;
       player.starPullBreaksBullets = skillAwakened;
       break;
+  }
+}
+
+function applySkillCooldownReduction(player: Player): void {
+  const multiplier = 1 - player.skillCooldownReduction;
+  player.activeCooldownMultiplier *= multiplier;
+
+  const cooldownKeys = [
+    'meteorCooldownMs',
+    'northStarCooldownMs',
+    'soulPinPulseCooldownMs',
+    'solarRayCooldownMs',
+    'voidBellCooldownMs',
+    'swordRainCooldownMs',
+    'stormNetCooldownMs',
+    'mirrorSigilCooldownMs',
+    'frostDomainCooldownMs',
+    'riftReturnCooldownMs',
+    'starPullCooldownMs',
+  ] as const;
+  for (const key of cooldownKeys) {
+    player[key] *= multiplier;
   }
 }

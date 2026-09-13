@@ -45,10 +45,12 @@ describe('tribulation stage objective chains', () => {
     expect(state.objectiveChainStep).toBe(2);
     expect(state.runStats.objectivesCompleted).toBe(1);
     expect(state.player.experience).toBe(state.player.experienceToNext * 0.2);
-    expect(sim.consumeEvents()).toContainEqual(expect.objectContaining({
+    const events = sim.consumeEvents();
+    expect(events).toContainEqual(expect.objectContaining({
       type: 'objective-resolved',
       success: true,
     }));
+    expect(events).not.toContainEqual(expect.objectContaining({ type: 'spirit-ore-earned' }));
   });
 
   it('turns a completed objective into an eighteen-second battlefield field', () => {
@@ -103,7 +105,9 @@ describe('tribulation stage objective chains', () => {
     expect(state.activeObjectiveId).toBeNull();
     expect(state.chests).toHaveLength(1);
     expect(state.runStats.objectivesCompleted).toBe(3);
-    expect(sim.consumeEvents()).toContainEqual(expect.objectContaining({ type: 'chest-dropped' }));
+    const events = sim.consumeEvents();
+    expect(events).toContainEqual(expect.objectContaining({ type: 'chest-dropped' }));
+    expect(events.filter((event) => event.type === 'spirit-ore-earned')).toHaveLength(1);
   });
 
   it('spawns an extra elite squad when the objective expires', () => {

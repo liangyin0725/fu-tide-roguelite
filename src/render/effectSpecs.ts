@@ -141,7 +141,11 @@ export function createEffectSpecs(events: CombatEvent[]): EffectSpec[] {
       case 'enemy-bullet-broken':
         return { kind: 'bullet-break', durationMs: 320, event };
       case 'active-skill-cast':
-        return { kind: 'active-cast', durationMs: 760, event };
+        return {
+          kind: 'active-cast',
+          durationMs: event.skill === 'talisman-ruin' ? 680 : event.skill === 'dimension-step' ? 840 : 980,
+          event,
+        };
       case 'active-skill-leveled':
         return { kind: 'active-level', durationMs: 1100, event };
       case 'elite-squad-spawned':

@@ -23,4 +23,13 @@ describe('arena themes', () => {
       expect(theme.grid).not.toBe(theme.background);
     }
   });
+
+  it('supplies a separate highlight color for the high-detail battlefield layer', () => {
+    for (const tribulation of ['calm', 'thunder', 'blood-moon', 'frost'] as const) {
+      const theme = getArenaTheme(tribulation);
+      expect(theme.detail).toEqual(expect.any(Number));
+      expect(theme.detail).not.toBe(theme.background);
+      expect(theme.detail).not.toBe(theme.grid);
+    }
+  });
 });

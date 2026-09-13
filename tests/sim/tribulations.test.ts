@@ -4,12 +4,12 @@ import { GameSimulation } from '../../src/sim/GameSimulation';
 import { createDefaultState } from '../../src/sim/state';
 
 describe('endless tribulations', () => {
-  it('cycles thunder, blood moon, and frost every five minutes after minute five', () => {
-    expect(getTribulationAt(299_999)).toBe('calm');
-    expect(getTribulationAt(300_000)).toBe('thunder');
-    expect(getTribulationAt(600_000)).toBe('blood-moon');
-    expect(getTribulationAt(900_000)).toBe('frost');
-    expect(getTribulationAt(1_200_000)).toBe('thunder');
+  it('cycles thunder, blood moon, and frost every four minutes after minute four', () => {
+    expect(getTribulationAt(239_999)).toBe('calm');
+    expect(getTribulationAt(240_000)).toBe('thunder');
+    expect(getTribulationAt(480_000)).toBe('blood-moon');
+    expect(getTribulationAt(720_000)).toBe('frost');
+    expect(getTribulationAt(960_000)).toBe('thunder');
   });
 
   it('defines restrained modifiers that change pressure instead of enemy count', () => {
@@ -20,7 +20,7 @@ describe('endless tribulations', () => {
 
   it('switches stage and emits a transition event at the boundary', () => {
     const state = createDefaultState();
-    state.elapsedMs = 299_999;
+    state.elapsedMs = 239_999;
     state.nextBossAtMs = 9_999_999;
     state.nextEliteSquadAtMs = 9_999_999;
     state.spawnTimerMs = -100_000;
@@ -50,7 +50,7 @@ describe('endless tribulations', () => {
 
   it('pauses for exactly one choice fifteen seconds into a tribulation', () => {
     const state = createDefaultState();
-    state.elapsedMs = 314_999;
+    state.elapsedMs = 254_999;
     state.tribulation = 'thunder';
     state.nextBossAtMs = 9_999_999;
     state.nextEliteSquadAtMs = 9_999_999;
@@ -67,12 +67,12 @@ describe('endless tribulations', () => {
     }));
 
     sim.update(1000, { x: 1, y: 0 });
-    expect(state.elapsedMs).toBe(315_000);
+    expect(state.elapsedMs).toBe(255_000);
   });
 
-  it('offers another choice five minutes after the previous one', () => {
+  it('offers another choice four minutes after the previous one', () => {
     const state = createDefaultState();
-    state.elapsedMs = 314_999;
+    state.elapsedMs = 254_999;
     state.tribulation = 'thunder';
     state.nextBossAtMs = 9_999_999;
     state.nextEliteSquadAtMs = 9_999_999;
@@ -81,12 +81,12 @@ describe('endless tribulations', () => {
 
     sim.update(1, { x: 0, y: 0 });
     sim.chooseTribulationChoice('thunder-seal');
-    state.elapsedMs = 614_999;
+    state.elapsedMs = 494_999;
     sim.update(1, { x: 0, y: 0 });
 
     expect(state.phase).toBe('tribulation-choice');
     expect(state.tribulationChoices).toEqual(['blood-pact', 'blood-calm']);
-    expect(state.nextTribulationChoiceAtMs).toBe(915_000);
+    expect(state.nextTribulationChoiceAtMs).toBe(735_000);
   });
 
   it('applies frost movement and blood-moon experience modifiers in combat', () => {

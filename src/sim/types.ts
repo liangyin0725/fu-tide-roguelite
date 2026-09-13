@@ -173,6 +173,7 @@ export interface Player {
   bulletReprisalDamage: number;
   bulletReprisalRadius: number;
   bulletReprisalChains: number;
+  skillCooldownReduction: number;
   activeCooldownMultiplier: number;
   activeCastHeal: number;
   activeCastShield: number;
@@ -416,6 +417,7 @@ export interface GameState {
   playerDownedUntilMs: number;
   playerReviveProgressMs: number;
   coopUpgradeQueue: Array<'p1' | 'p2'>;
+  nextCoopUpgradePlayerId: 'p1' | 'p2';
   pendingUpgradePlayerId: 'p1' | 'p2';
   lastCoopUpgradeChoices: UpgradeChoice[];
   player: Player;

@@ -1,6 +1,7 @@
 import type { Player, UpgradeId } from './types';
 import { getEquippedForKind, recalculatePlayerBuild } from './loadout';
 import { getUpgradeKind, getUpgradeMaxLevel, type UpgradeKind } from './upgradeCatalog';
+import { getAwakeningRequirement, isUpgradeAwakened } from './awakening';
 
 export interface UpgradePreview {
   kind: UpgradeKind;
@@ -8,6 +9,7 @@ export interface UpgradePreview {
   nextLevel: number;
   maxLevel: number;
   awakens: boolean;
+  awakeningRequirement: UpgradeId | null;
   lines: string[];
 }
 
@@ -23,7 +25,7 @@ type NumericPlayerKey = {
 }[keyof Player];
 
 const METRICS: Record<UpgradeId, Metric[]> = {
-  'faster-swords': [{ label: '攻击间隔', key: 'attackCooldownMs', scale: 0.001, suffix: '秒' }],
+  'faster-swords': [{ label: '全技能冷却缩短', key: 'skillCooldownReduction', scale: 100, suffix: '%' }],
   'heavier-swords': [{ label: '飞剑伤害', key: 'attackDamage' }],
   'multi-swords': [{ label: '飞剑数量', key: 'projectileCount' }],
   'piercing-swords': [{ label: '穿透次数', key: 'projectilePierce' }],
@@ -154,7 +156,8 @@ export function createUpgradePreview(player: Player, upgrade: UpgradeId): Upgrad
     currentLevel,
     nextLevel,
     maxLevel,
-    awakens: currentLevel < maxLevel && nextLevel === maxLevel,
+    awakens: !isUpgradeAwakened(current, upgrade) && isUpgradeAwakened(next, upgrade),
+    awakeningRequirement: getAwakeningRequirement(upgrade),
     lines: METRICS[upgrade]
       .map((metric) => formatMetric(metric, current, next))
       .filter((line): line is string => line !== null),

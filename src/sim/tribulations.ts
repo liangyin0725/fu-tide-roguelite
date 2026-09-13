@@ -34,8 +34,8 @@ export const TRIBULATION_NAMES: Record<TribulationType, string> = {
   frost: '玄霜寒潮',
 };
 
-const FIRST_TRIBULATION_AT_MS = 300_000;
-const TRIBULATION_DURATION_MS = 300_000;
+export const FIRST_TRIBULATION_AT_MS = 240_000;
+export const TRIBULATION_DURATION_MS = 240_000;
 
 export function getTribulationAt(elapsedMs: number): TribulationType {
   if (elapsedMs < FIRST_TRIBULATION_AT_MS) return 'calm';

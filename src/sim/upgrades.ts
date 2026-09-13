@@ -11,6 +11,7 @@ import {
   getEquippedForKind,
   recalculatePlayerBuild,
 } from './loadout';
+import { isUpgradeAwakened } from './awakening';
 import {
   getUpgradeKind,
   getUpgradeMaxLevel,
@@ -47,12 +48,12 @@ const INSIGHT_IDS = Object.keys(INSIGHT_LABELS) as InsightId[];
 
 export const UPGRADE_LABELS: Record<UpgradeId, UpgradeLabel> = {
   'faster-swords': {
-    name: '疾风飞剑',
-    description: '飞剑冷却缩短 18%',
-    symbol: '剑',
-    category: 'offense',
-    awakeningName: '无间剑域',
-    awakeningSummary: ['攻击间隔额外缩短 40%', '最低攻击间隔降至 120ms'],
+    name: '灵息回流',
+    description: '所有技能冷却缩短 8%',
+    symbol: '息',
+    category: 'utility',
+    awakeningName: '万法回环',
+    awakeningSummary: ['所有技能冷却缩短 32%', '主动与被动技能施放更频繁'],
   },
   'heavier-swords': {
     name: '镇煞剑诀',
@@ -267,8 +268,12 @@ export function createUpgradeChoices(
   state: GameState,
   player: Player = state.player,
   excludedChoices: UpgradeChoice[] = [],
+  blockedSkills: readonly UpgradeId[] = [],
 ): UpgradeChoice[] {
-  const available = getAvailable(player).filter((id) => canEquipUpgrade(player, id));
+  const available = getAvailable(player).filter((id) => (
+    canEquipUpgrade(player, id)
+      && (getUpgradeKind(id) !== 'skill' || !blockedSkills.includes(id))
+  ));
   const distinctAvailable = available.filter((id) => !excludedChoices.includes(id));
   const choicePool = distinctAvailable.length >= 3 ? distinctAvailable : available;
   if (choicePool.length === 0) {
@@ -329,7 +334,7 @@ export function applyUpgrade(state: GameState, upgrade: UpgradeId, player: Playe
     return { previousLevel: currentLevel, level: currentLevel, awakened: false };
   }
   const level = currentLevel + 1;
-  const awakened = level === maxLevel;
+  const wasAwakened = isUpgradeAwakened(player, upgrade);
   const equipped = getEquippedForKind(player, getUpgradeKind(upgrade));
   if (currentLevel === 0 && !equipped.includes(upgrade)) {
     equipped.push(upgrade);
@@ -337,6 +342,7 @@ export function applyUpgrade(state: GameState, upgrade: UpgradeId, player: Playe
   const previousHp = player.hp;
   player.upgradeLevels[upgrade] = level;
   recalculatePlayerBuild(player);
+  const awakened = !wasAwakened && isUpgradeAwakened(player, upgrade);
   if (upgrade === 'golden-shield') {
     player.shield = player.maxShield;
   } else if (upgrade === 'vital-breath') {

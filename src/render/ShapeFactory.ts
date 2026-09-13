@@ -471,18 +471,19 @@ export function drawAwakenedSkillGlyphs(
   equippedSkills: UpgradeId[],
   upgradeLevels: UpgradeLevels,
   timeMs: number,
+  awakenedSkills?: readonly UpgradeId[],
 ): void {
   graphics.clear();
-  const glyphs = getAwakenedSkillGlyphs(equippedSkills, upgradeLevels);
+  const glyphs = getAwakenedSkillGlyphs(equippedSkills, upgradeLevels, awakenedSkills);
   const formation = getGlyphFormation(glyphs.map((glyph) => glyph.upgrade));
   if (glyphs.length > 0) {
-    const formationRadius = 58 + glyphs.length * 9;
-    const pulse = Math.sin(timeMs * 0.004) * 4;
-    graphics.fillStyle(0x61f5ff, 0.035 + glyphs.length * 0.006);
-    graphics.fillCircle(x, y, formationRadius + 22 + pulse);
-    graphics.lineStyle(10, 0xffffff, 0.035);
-    graphics.strokeCircle(x, y, formationRadius + 18 + pulse);
-    graphics.lineStyle(2, 0xf6d365, 0.36);
+    const formationRadius = 64 + glyphs.length * 13;
+    const pulse = Math.sin(timeMs * 0.004) * 7;
+    graphics.fillStyle(0x61f5ff, 0.07 + glyphs.length * 0.012);
+    graphics.fillCircle(x, y, formationRadius + 32 + pulse);
+    graphics.lineStyle(16, 0xffffff, 0.055);
+    graphics.strokeCircle(x, y, formationRadius + 28 + pulse);
+    graphics.lineStyle(3, 0xf6d365, 0.54);
     graphics.strokeCircle(x, y, formationRadius);
     graphics.lineStyle(1, 0xffffff, 0.38);
     graphics.strokeCircle(x, y, formationRadius * 0.62);
@@ -500,8 +501,8 @@ export function drawAwakenedSkillGlyphs(
     for (let rune = 0; rune < 12; rune += 1) {
       const angle = timeMs * 0.0012 + rune * Math.PI / 6;
       const inner = formationRadius + 4;
-      const outer = inner + 8 + (rune % 3) * 2;
-      graphics.lineStyle(rune % 2 === 0 ? 3 : 1, 0xf6d365, 0.52);
+      const outer = inner + 12 + (rune % 3) * 3;
+      graphics.lineStyle(rune % 2 === 0 ? 4 : 2, 0xf6d365, 0.72);
       graphics.lineBetween(
         x + Math.cos(angle) * inner,
         y + Math.sin(angle) * inner,
@@ -526,8 +527,8 @@ export function drawAwakenedSkillGlyphs(
       py + Math.sin(angle) * 8,
     );
     graphics.fillStyle(glyph.color, 0.18);
-    graphics.fillCircle(px, py, 20 + pulse);
-    graphics.lineStyle(3, glyph.color, 0.95);
+    graphics.fillCircle(px, py, 27 + pulse);
+    graphics.lineStyle(4, glyph.color, 0.98);
     if (glyph.symbol === 'ring') {
       graphics.strokeCircle(px, py, 7 + pulse * 0.4);
       graphics.lineStyle(2, 0xffffff, 0.72);

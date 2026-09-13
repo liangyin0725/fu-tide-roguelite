@@ -5,15 +5,16 @@ export interface ArenaTheme {
   name: string;
   background: number;
   grid: number;
+  detail: number;
   accent: number;
   motif: 'rings' | 'lightning' | 'moon' | 'crystal';
 }
 
 const ARENA_THEMES: Record<TribulationType, ArenaTheme> = {
-  calm: { name: '常夜道场', background: 0x080912, grid: 0x1b2840, accent: 0x61f5ff, motif: 'rings' },
-  thunder: { name: '九霄雷域', background: 0x07121e, grid: 0x16465c, accent: 0x61f5ff, motif: 'lightning' },
-  'blood-moon': { name: '血月祭场', background: 0x160712, grid: 0x5b1737, accent: 0xff4fa3, motif: 'moon' },
-  frost: { name: '玄霜冰原', background: 0x07171d, grid: 0x1c5263, accent: 0xc9f5ff, motif: 'crystal' },
+  calm: { name: '常夜道场', background: 0x0d1626, grid: 0x304b68, detail: 0x7ab8d6, accent: 0x61f5ff, motif: 'rings' },
+  thunder: { name: '九霄雷域', background: 0x0b2032, grid: 0x23718c, detail: 0x89ddf5, accent: 0x61f5ff, motif: 'lightning' },
+  'blood-moon': { name: '血月祭场', background: 0x220b1c, grid: 0x762149, detail: 0xff9fc9, accent: 0xff4fa3, motif: 'moon' },
+  frost: { name: '玄霜冰原', background: 0x0c2530, grid: 0x31788b, detail: 0xd5f9ff, accent: 0xc9f5ff, motif: 'crystal' },
 };
 
 export function getArenaTheme(tribulation: TribulationType): ArenaTheme {
@@ -30,10 +31,11 @@ export function drawArenaTheme(
   graphics.clear();
   graphics.fillStyle(theme.background, 1);
   graphics.fillRect(0, 0, width, height);
-  graphics.lineStyle(1, theme.grid, 0.62);
+  drawBattlefieldTexture(graphics, width, height, theme);
+  graphics.lineStyle(1, theme.grid, 0.72);
   for (let x = 0; x <= width; x += 80) graphics.lineBetween(x, 0, x, height);
   for (let y = 0; y <= height; y += 80) graphics.lineBetween(0, y, width, y);
-  graphics.lineStyle(4, theme.accent, 0.26);
+  graphics.lineStyle(4, theme.accent, 0.38);
   graphics.strokeRect(0, 0, width, height);
 
   if (theme.motif === 'lightning') {
@@ -47,14 +49,37 @@ export function drawArenaTheme(
   }
 }
 
+function drawBattlefieldTexture(
+  graphics: Phaser.GameObjects.Graphics,
+  width: number,
+  height: number,
+  theme: ArenaTheme,
+): void {
+  graphics.lineStyle(1, theme.detail, 0.16);
+  for (let x = 40; x <= width; x += 80) graphics.lineBetween(x, 0, x, height);
+  for (let y = 40; y <= height; y += 80) graphics.lineBetween(0, y, width, y);
+
+  for (let x = 80; x < width; x += 160) {
+    for (let y = 80; y < height; y += 160) {
+      graphics.fillStyle(theme.detail, 0.12);
+      graphics.fillCircle(x, y, 2);
+      graphics.lineStyle(1, theme.detail, 0.28);
+      graphics.strokeCircle(x, y, 7);
+      graphics.lineBetween(x - 13, y, x + 13, y);
+      graphics.lineBetween(x, y - 13, x, y + 13);
+    }
+  }
+}
+
 function drawCalmField(graphics: Phaser.GameObjects.Graphics, width: number, height: number, accent: number): void {
-  graphics.lineStyle(2, 0xf6d365, 0.1);
-  graphics.lineStyle(2, accent, 0.16);
+  graphics.lineStyle(2, 0xf6d365, 0.2);
+  graphics.lineStyle(2, accent, 0.24);
   for (const [x, y, radius] of motifPoints(width, height, [
     [0.18, 0.24, 0.12], [0.5, 0.68, 0.16], [0.76, 0.32, 0.1], [0.9, 0.78, 0.08],
   ])) {
     graphics.strokeCircle(x, y, radius);
     graphics.strokeCircle(x, y, radius * 0.72);
+    graphics.strokeCircle(x, y, radius * 0.36);
   }
 }
 

@@ -27,9 +27,10 @@ const GLYPH_STYLES: Partial<Record<UpgradeId, Omit<AwakenedSkillGlyph, 'upgrade'
 export function getAwakenedSkillGlyphs(
   equippedSkills: UpgradeId[],
   upgradeLevels: UpgradeLevels,
+  awakenedSkills: readonly UpgradeId[] = equippedSkills.filter((upgrade) => upgradeLevels[upgrade] >= 6),
 ): AwakenedSkillGlyph[] {
   return equippedSkills.flatMap((upgrade) => {
     const style = GLYPH_STYLES[upgrade];
-    return style && upgradeLevels[upgrade] >= 6 ? [{ upgrade, ...style }] : [];
+    return style && awakenedSkills.includes(upgrade) ? [{ upgrade, ...style }] : [];
   });
 }

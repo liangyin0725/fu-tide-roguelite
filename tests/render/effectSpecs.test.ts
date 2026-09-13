@@ -60,6 +60,16 @@ describe('createEffectSpecs', () => {
     expect(specs.map((spec) => spec.kind)).toEqual(['bullet-break', 'active-cast']);
   });
 
+  it('keeps each active skill effect on its own readable timing', () => {
+    const specs = createEffectSpecs([
+      { type: 'active-skill-cast', x: 0, y: 0, skill: 'talisman-ruin', angle: 0 },
+      { type: 'active-skill-cast', x: 0, y: 0, skill: 'dimension-step', angle: 0 },
+      { type: 'active-skill-cast', x: 0, y: 0, skill: 'tai-chi-ward', angle: 0 },
+    ]);
+
+    expect(specs.map((spec) => spec.durationMs)).toEqual([680, 840, 980]);
+  });
+
   it('maps life-drain healing and siege pressure to distinct effects', () => {
     const specs = createEffectSpecs([
       { type: 'player-healed', x: 10, y: 20, amount: 3, source: 'life-drain' },

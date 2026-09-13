@@ -35,6 +35,7 @@ import {
 import { GameAudio } from '../audio/GameAudio';
 import { isBetaModePassphrase } from '../testing/betaMode';
 import { getBossWaveBeforeElapsed } from '../sim/spawnPacing';
+import { getAwakenedSkills, isUpgradeAwakened } from '../sim/awakening';
 import {
   earnDaoYun,
   earnSpiritOre,
@@ -494,7 +495,7 @@ export class GameScene extends Phaser.Scene {
       player.y,
       player.thunderRadius,
       this.time.now,
-      player.upgradeLevels['thunder-ring'] >= 6,
+      isUpgradeAwakened(player, 'thunder-ring'),
     );
     drawOrbitingBlades(
       this.orbitingBladeGraphic,
@@ -511,6 +512,7 @@ export class GameScene extends Phaser.Scene {
       player.equippedSkills,
       player.upgradeLevels,
       this.time.now,
+      getAwakenedSkills(player),
     );
     drawActiveBarrier(
       this.activeBarrierGraphic,
@@ -674,8 +676,11 @@ export class GameScene extends Phaser.Scene {
       this.cameras.main.setZoom(1);
       return;
     }
-    const separation = Phaser.Math.Distance.Between(player.x, player.y, partner.x, partner.y);
-    this.cameras.main.setZoom(Phaser.Math.Clamp(1.05 - separation / 1600, 0.75, 1));
+    const camera = this.cameras.main;
+    const horizontalSpan = Math.abs(player.x - partner.x) + 180;
+    const verticalSpan = Math.abs(player.y - partner.y) + 180;
+    const requiredZoom = Math.min(camera.width / horizontalSpan, camera.height / verticalSpan);
+    camera.setZoom(Phaser.Math.Clamp(requiredZoom, 0.25, 1));
     this.cameras.main.centerOn((player.x + partner.x) / 2, (player.y + partner.y) / 2);
   }
 }

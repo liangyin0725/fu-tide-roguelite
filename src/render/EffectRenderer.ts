@@ -315,9 +315,27 @@ export class EffectRenderer {
           drawRing(graphics, event.x, event.y, event.radius * progress * 0.58, 0xffffff, fade * 0.75, 3);
         }
         break;
-      case 'soul-pinned':
-        drawRing(graphics, event.x, event.y, 16 + progress * 26, 0xff4fa3, fade, event.awakened ? 7 : 4);
+      case 'soul-pinned': {
+        const radius = 16 + progress * 26;
+        drawRing(graphics, event.x, event.y, radius, 0xff4fa3, fade, event.awakened ? 7 : 4);
+        for (let index = 0; index < 4; index += 1) {
+          const nailAngle = progress * 1.1 + index * Math.PI / 2;
+          const outer = radius + 12;
+          const inner = radius * 0.32;
+          const outerX = event.x + Math.cos(nailAngle) * outer;
+          const outerY = event.y + Math.sin(nailAngle) * outer;
+          const innerX = event.x + Math.cos(nailAngle) * inner;
+          const innerY = event.y + Math.sin(nailAngle) * inner;
+          graphics.lineStyle(event.awakened ? 5 : 3, 0xb89cff, fade * 0.8);
+          graphics.lineBetween(outerX, outerY, innerX, innerY);
+          graphics.fillStyle(0xff4fa3, fade * 0.9);
+          graphics.fillCircle(innerX, innerY, event.awakened ? 5 : 3);
+        }
+        if (event.awakened) {
+          drawRing(graphics, event.x, event.y, radius * 0.58, 0xffffff, fade * 0.7, 2);
+        }
         break;
+      }
       case 'frost-domain':
         {
           const outerRadius = event.radius * (0.46 + progress * 0.54);
@@ -429,7 +447,7 @@ export class EffectRenderer {
         }
         break;
       case 'active-skill-cast':
-        drawActiveCast(graphics, event.x, event.y, event.angle, progress, fade);
+        drawActiveCast(graphics, event, progress, fade);
         break;
       case 'active-skill-leveled':
         drawLevelSigil(graphics, event.x, event.y, progress, fade);
@@ -951,26 +969,61 @@ function drawDamageSpark(
 
 function drawActiveCast(
   graphics: Phaser.GameObjects.Graphics,
-  x: number,
-  y: number,
-  angle: number,
+  event: Extract<CombatEvent, { type: 'active-skill-cast' }>,
   progress: number,
   fade: number,
 ): void {
-  drawRing(graphics, x, y, 24 + progress * 110, 0xf6d365, fade, 8);
-  drawRing(graphics, x, y, 16 + progress * 74, 0x8ffcff, fade, 3);
-  for (let index = 0; index < 6; index += 1) {
-    const rayAngle = angle + index * Math.PI / 3 + progress * 1.4;
-    const inner = 22 + progress * 34;
-    const outer = inner + 26 + progress * 22;
-    graphics.lineStyle(3, index % 2 === 0 ? 0xffffff : 0xf6d365, fade * 0.8);
-    graphics.lineBetween(
-      x + Math.cos(rayAngle) * inner,
-      y + Math.sin(rayAngle) * inner,
-      x + Math.cos(rayAngle) * outer,
-      y + Math.sin(rayAngle) * outer,
-    );
+  const { x, y, angle } = event;
+  if (event.skill === 'talisman-ruin') {
+    drawRing(graphics, x, y, 20 + progress * 112, 0xff4e44, fade, 10);
+    drawRing(graphics, x, y, 12 + progress * 78, 0xf6d365, fade * 0.9, 3);
+    for (let index = 0; index < 6; index += 1) {
+      const talismanAngle = angle + (index - 2.5) * 0.28;
+      const distance = 26 + progress * (54 + index * 6);
+      const talismanX = x + Math.cos(talismanAngle) * distance;
+      const talismanY = y + Math.sin(talismanAngle) * distance;
+      const size = 7 + progress * 8;
+      graphics.fillStyle(index % 2 === 0 ? 0xff4e44 : 0xf6d365, fade * 0.9);
+      graphics.fillRect(talismanX - size / 2, talismanY - size, size, size * 2);
+      graphics.lineStyle(2, 0xffffff, fade * 0.82);
+      graphics.strokeRect(talismanX - size / 2, talismanY - size, size, size * 2);
+    }
+    return;
   }
+
+  if (event.skill === 'dimension-step') {
+    const forwardX = Math.cos(angle);
+    const forwardY = Math.sin(angle);
+    const sideX = -forwardY;
+    const sideY = forwardX;
+    const reach = 28 + progress * 136;
+    const width = 20 + progress * 34;
+    graphics.lineStyle(12, 0x8d7cff, fade * 0.36);
+    graphics.lineBetween(x, y, x + forwardX * reach, y + forwardY * reach);
+    graphics.lineStyle(4, 0xf1d8ff, fade * 0.9);
+    graphics.lineBetween(x + sideX * width, y + sideY * width, x + forwardX * reach + sideX * width, y + forwardY * reach + sideY * width);
+    graphics.lineBetween(x - sideX * width, y - sideY * width, x + forwardX * reach - sideX * width, y + forwardY * reach - sideY * width);
+    for (let index = 0; index < 3; index += 1) {
+      const ghost = reach * (0.28 + index * 0.24);
+      graphics.fillStyle(index === 1 ? 0xffffff : 0xa96dff, fade * (0.46 - index * 0.08));
+      graphics.fillCircle(x + forwardX * ghost, y + forwardY * ghost, 10 - index * 2);
+    }
+    return;
+  }
+
+  const radius = 26 + progress * 112;
+  drawRing(graphics, x, y, radius, 0xdff9ff, fade, 8);
+  drawRing(graphics, x, y, radius * 0.68, 0xf6d365, fade * 0.86, 3);
+  for (let index = 0; index < 2; index += 1) {
+    const orbitAngle = angle + progress * Math.PI * 2 + index * Math.PI;
+    const orbX = x + Math.cos(orbitAngle) * radius * 0.42;
+    const orbY = y + Math.sin(orbitAngle) * radius * 0.42;
+    graphics.fillStyle(index === 0 ? 0x8ffcff : 0xf6d365, fade * 0.95);
+    graphics.fillCircle(orbX, orbY, 10 + progress * 5);
+  }
+  graphics.lineStyle(3, 0xffffff, fade * 0.8);
+  graphics.lineBetween(x - radius * 0.7, y, x + radius * 0.7, y);
+  graphics.lineBetween(x, y - radius * 0.7, x, y + radius * 0.7);
 }
 
 function createDamageLabel(scene: Phaser.Scene, event: CombatEvent): Phaser.GameObjects.Text | undefined {
@@ -1036,6 +1089,15 @@ function drawLightning(
       graphics.lineBetween(point.x, point.y, point.x + (index % 4 ? 22 : -22), point.y - 30);
     }
     drawRing(graphics, event.toX, event.toY, 12 + progress * 28, 0x61f5ff, fade * 0.74, 3);
+  }
+  if (!stormNet && !solarRay) {
+    for (const index of [2, 4]) {
+      const point = points[index];
+      const branchDirection = index === 2 ? 1 : -1;
+      graphics.lineStyle(3, 0xb9f8ff, fade * 0.78);
+      graphics.lineBetween(point.x, point.y, point.x + branchDirection * 22, point.y - 25);
+    }
+    drawRing(graphics, event.toX, event.toY, 8 + progress * 18, 0x61f5ff, fade * 0.6, 2);
   }
   if (stormNet) {
     for (let index = 1; index < points.length - 1; index += 2) {

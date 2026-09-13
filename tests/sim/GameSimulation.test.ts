@@ -16,20 +16,22 @@ import {
 } from '../../src/sim/upgradeCatalog';
 import { ARENA_HEIGHT, ARENA_WIDTH, PLAYER_START_X, PLAYER_START_Y } from '../../src/sim/constants';
 import { getBossWaveBeforeElapsed } from '../../src/sim/spawnPacing';
+import { getAwakeningRequirement } from '../../src/sim/awakening';
 
 describe('GameSimulation', () => {
-  it('awards spirit ore for each five-minute survival milestone', () => {
+  it('awards one spirit ore for each ten-minute survival milestone', () => {
     const state = createDefaultState();
-    state.elapsedMs = 299_999;
+    state.elapsedMs = 599_999;
     const sim = new GameSimulation(state);
 
     sim.update(1, { x: 0, y: 0 });
 
-    expect(sim.consumeEvents()).toContainEqual(expect.objectContaining({
+    const rewards = sim.consumeEvents().filter((event) => event.type === 'spirit-ore-earned');
+    expect(rewards).toEqual([expect.objectContaining({
       type: 'spirit-ore-earned',
       source: 'survival',
       amount: 1,
-    }));
+    })]);
   });
 
   it('uses the expanded arena while preserving the established opening spawn point', () => {
@@ -103,7 +105,8 @@ describe('GameSimulation', () => {
     sim.chooseUpgrade('faster-swords');
 
     expect(sim.state.phase).toBe('playing');
-    expect(sim.state.player.attackCooldownMs).toBeLessThan(650);
+    expect(sim.state.player.attackCooldownMs).toBe(650);
+    expect(sim.state.player.skillCooldownReduction).toBeCloseTo(0.08);
     expect(sim.state.upgradeChoices).toHaveLength(0);
   });
 
@@ -224,12 +227,28 @@ describe('GameSimulation', () => {
     expect(results[2]).toEqual({ previousLevel: 2, level: 3, awakened: false });
     expect(results[3]).toEqual({ previousLevel: 3, level: 4, awakened: true });
     expect(results[4]).toEqual({ previousLevel: 4, level: 4, awakened: false });
-    expect(state.player.attackCooldownMs).toBeCloseTo(650 * 0.82 ** 3 * 0.6);
+    expect(state.player.attackCooldownMs).toBe(650);
+    expect(state.player.skillCooldownReduction).toBeCloseTo(0.32);
+  });
+
+  it('reduces every skill cooldown by eight percent per level without speeding up basic swords', () => {
+    const state = createDefaultState();
+
+    applyUpgrade(state, 'meteor-seal');
+    for (let level = 0; level < 4; level += 1) {
+      applyUpgrade(state, 'faster-swords');
+    }
+
+    expect(state.player.attackCooldownMs).toBe(650);
+    expect(state.player.meteorCooldownMs).toBeCloseTo(7000 * 0.68);
+    expect(state.player.activeCooldownMultiplier).toBeCloseTo(0.68);
   });
 
   it('applies distinct awakening attributes at each category cap', () => {
     const awaken = (upgrade: (typeof UPGRADE_IDS)[number]) => {
       const state = createDefaultState();
+      const requirement = getAwakeningRequirement(upgrade);
+      if (requirement) applyUpgrade(state, requirement);
       for (let level = 0; level < getUpgradeMaxLevel(upgrade); level += 1) {
         applyUpgrade(state, upgrade);
       }
@@ -252,6 +271,8 @@ describe('GameSimulation', () => {
   it('awakens every ability at its category level cap', () => {
     for (const upgrade of UPGRADE_IDS) {
       const state = createDefaultState();
+      const requirement = getAwakeningRequirement(upgrade);
+      if (requirement) applyUpgrade(state, requirement);
       let result;
       const maxLevel = getUpgradeMaxLevel(upgrade);
       for (let level = 0; level < maxLevel; level += 1) {
@@ -368,7 +389,7 @@ describe('GameSimulation', () => {
     expect(enemy.hp).toBe(52);
   });
 
-  it('lets each awakened glyph fire a small bolt from its orbit', () => {
+  it('lets each awakened glyph fire a reinforced bolt every 0.9 seconds', () => {
     const state = createDefaultState();
     state.player.attackCooldownMs = 99_999;
     state.player.equippedSkills = ['thunder-ring', 'fire-burst'];
@@ -377,9 +398,13 @@ describe('GameSimulation', () => {
     const sim = new GameSimulation(state);
     sim.spawnEnemy({ x: state.player.x + 240, y: state.player.y, hp: 300, speed: 0 });
 
-    sim.update(1400, { x: 0, y: 0 });
+    sim.update(900, { x: 0, y: 0 });
 
-    expect(sim.state.projectiles.filter((projectile) => projectile.source === 'glyph')).toHaveLength(2);
+    const glyphProjectiles = sim.state.projectiles.filter((projectile) => projectile.source === 'glyph');
+    expect(glyphProjectiles).toHaveLength(2);
+    expect(glyphProjectiles).toEqual(expect.arrayContaining([
+      expect.objectContaining({ damage: 18 * 0.95, pierceRemaining: 2, radius: 5 }),
+    ]));
     expect(sim.consumeEvents()).toContainEqual(expect.objectContaining({
       type: 'glyph-volley',
       count: 2,
@@ -401,7 +426,7 @@ describe('GameSimulation', () => {
     expect(sim.state.projectiles.filter((projectile) => projectile.source === 'glyph')).toHaveLength(0);
   });
 
-  it('turns every third awakened glyph volley into a small control ritual', () => {
+  it('turns every second awakened glyph volley into a control ritual', () => {
     const state = createDefaultState();
     state.player.attackCooldownMs = 99_999;
     state.player.equippedSkills = ['frost-seal'];
@@ -409,7 +434,7 @@ describe('GameSimulation', () => {
     const sim = new GameSimulation(state);
     sim.spawnEnemy({ x: state.player.x + 180, y: state.player.y, hp: 300, speed: 0 });
 
-    sim.update(4200, { x: 0, y: 0 });
+    sim.update(1800, { x: 0, y: 0 });
 
     expect(sim.consumeEvents()).toContainEqual(expect.objectContaining({
       type: 'glyph-volley',
@@ -947,6 +972,7 @@ describe('GameSimulation', () => {
     expect(sim.state.shards.reduce((total, shard) => total + shard.value, 0)).toBe(160);
     expect(sim.consumeEvents()).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'chest-dropped', wave: 2 }),
+      expect.objectContaining({ type: 'spirit-ore-earned', source: 'boss', amount: 1 }),
       expect.objectContaining({ type: 'boss-reward-burst', wave: 2, experience: 160 }),
     ]));
   });
@@ -981,6 +1007,7 @@ describe('GameSimulation', () => {
 
   it('can awaken a level-five skill from a boss treasure', () => {
     const state = createDefaultState();
+    applyUpgrade(state, 'boss-slayer');
     state.player.experienceToNext = 1_000_000;
     for (const upgrade of UPGRADE_IDS) state.player.upgradeLevels[upgrade] = getUpgradeMaxLevel(upgrade);
     state.player.upgradeLevels['meteor-seal'] = 5;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createEliteSquadBlueprint } from '../../src/sim/eliteSquads';
 import { GameSimulation } from '../../src/sim/GameSimulation';
 import { createDefaultState } from '../../src/sim/state';
+import { dealPlayerDamage } from '../../src/sim/combatStats';
 
 describe('elite squads', () => {
   it('builds one rotating elite leader and four escorts', () => {
@@ -38,8 +39,53 @@ describe('elite squads', () => {
     const ally = sim.spawnEnemy({ x: 540, y: 300, hp: 100, speed: 0 });
     ally.hp = 40;
 
-    sim.update(4000, { x: 0, y: 0 });
+    sim.update(3000, { x: 0, y: 0 });
 
-    expect(ally.hp).toBeGreaterThan(40);
+    expect(ally.hp).toBe(52);
+  });
+
+  it('lets iron-wall elites protect nearby squadmates from player damage', () => {
+    const state = createDefaultState();
+    const sim = new GameSimulation(state);
+    sim.spawnEnemy({ x: 500, y: 300, hp: 100, speed: 0, eliteAffix: 'iron-wall', squadId: 1 });
+    const escort = sim.spawnEnemy({ x: 560, y: 300, hp: 100, speed: 0, squadId: 1 });
+
+    dealPlayerDamage(state, escort, 100, 'flying-sword');
+
+    expect(escort.hp).toBe(25);
+  });
+
+  it('makes haste elites periodically rush toward the player', () => {
+    const state = createDefaultState();
+    state.nextBossAtMs = 9_999_999;
+    state.nextEliteSquadAtMs = 9_999_999;
+    state.spawnTimerMs = -100_000;
+    state.player.x = 800;
+    state.player.y = 300;
+    const sim = new GameSimulation(state);
+    const elite = sim.spawnEnemy({ x: 500, y: 300, hp: 100, speed: 0, eliteAffix: 'haste' });
+
+    sim.update(2800, { x: 0, y: 0 });
+
+    expect(elite.x).toBeGreaterThan(600);
+    expect(sim.consumeEvents()).toContainEqual(expect.objectContaining({
+      type: 'elite-effect', affix: 'haste',
+    }));
+  });
+
+  it('lets suppressors lock nearby active skills even when they are ready', () => {
+    const state = createDefaultState();
+    state.nextBossAtMs = 9_999_999;
+    state.nextEliteSquadAtMs = 9_999_999;
+    state.spawnTimerMs = -100_000;
+    const sim = new GameSimulation(state);
+    sim.spawnEnemy({ x: state.player.x + 80, y: state.player.y, hp: 100, speed: 0, eliteAffix: 'suppressor' });
+
+    sim.update(2200, { x: 0, y: 0 });
+
+    expect(state.player.activeCooldownRemainingMs).toBeGreaterThan(0);
+    expect(sim.consumeEvents()).toContainEqual(expect.objectContaining({
+      type: 'elite-effect', affix: 'suppressor',
+    }));
   });
 });

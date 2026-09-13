@@ -23,6 +23,6 @@ describe('tribulation choices', () => {
       playerSpeed: 1,
       enemySpeed: 1,
     });
-    expect(getTribulationEndMs(315_000)).toBe(600_000);
+    expect(getTribulationEndMs(255_000)).toBe(480_000);
   });
 });

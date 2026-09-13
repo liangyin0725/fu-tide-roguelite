@@ -620,6 +620,9 @@ export class HudController {
         const label = UPGRADE_LABELS[choice];
         const preview = createUpgradePreview(state.player, choice);
         const awakens = preview.awakens;
+        const needsResonance = preview.awakeningRequirement !== null
+          && preview.nextLevel === preview.maxLevel
+          && !awakens;
         const newSynergies = getSynergiesActivatedByUpgrade(state.player, choice);
         return `
           <button
@@ -635,6 +638,7 @@ export class HudController {
             <span class="upgrade-kind">${preview.kind === 'skill' ? '技能' : '强化'} · 上限 Lv.${preview.maxLevel}</span>
             <span class="upgrade-description">${preview.lines.join('<br>')}</span>
             ${newSynergies.length > 0 ? `<span class="synergy-preview">激活组合技 · ${newSynergies.map((synergy) => SYNERGIES[synergy].name).join(' / ')}</span>` : ''}
+            ${needsResonance ? `<span class="awakening-summary">共鸣觉醒需 · ${UPGRADE_LABELS[preview.awakeningRequirement!].name}</span>` : ''}
             ${awakens ? `<span class="awakening-summary">${label.awakeningSummary.join(' · ')}</span>` : ''}
           </button>
         `;
