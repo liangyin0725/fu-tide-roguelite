@@ -1,0 +1,9 @@
+export const PLAYER_START_X = 480;
+export const PLAYER_START_Y = 360;
+export const ARENA_WIDTH = 2400;
+export const ARENA_HEIGHT = 1500;
+export const CONTACT_DAMAGE_COOLDOWN_MS = 450;
+export const PROJECTILE_SPEED = 620;
+export const PROJECTILE_TTL_MS = 1400;
+export const BASE_SPAWN_INTERVAL_MS = 1200;
+export const EXPERIENCE_PICKUP_RADIUS = 34;
