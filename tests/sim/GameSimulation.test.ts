@@ -787,6 +787,29 @@ describe('GameSimulation', () => {
     expect(state.activeBossObjectiveId).toBeNull();
   });
 
+  it('interrupts a boss cast when its break target is destroyed during the telegraph', () => {
+    const state = createDefaultState();
+    state.nextBossAtMs = 9_999_999;
+    state.player.attackDamage = 0;
+    const sim = new GameSimulation(state);
+    const boss = sim.spawnEnemy({
+      x: 700, y: 360, hp: 500, speed: 0, kind: 'boss', bossWave: 1, bossType: 'crimson',
+    });
+
+    sim.update(7_000, { x: 0, y: 0 });
+    const target = state.enemies.find((enemy) => enemy.bossBreakOwnerId === boss.id);
+    expect(target).toMatchObject({ speed: 0, hp: 130, radius: 24 });
+    expect(state.bossHazards.length).toBeGreaterThan(0);
+
+    target!.hp = 0;
+    sim.update(16, { x: 0, y: 0 });
+
+    expect(boss.bossArenaStunnedUntilMs).toBe(state.elapsedMs + 3_000);
+    expect(boss.bossArenaVulnerableUntilMs).toBe(state.elapsedMs + 8_000);
+    expect(state.bossHazards).toHaveLength(0);
+    expect(sim.consumeEvents()).toContainEqual(expect.objectContaining({ type: 'boss-break-resolved', success: true }));
+  });
+
   it('unlocks the hidden character only after resolving a blood moon boss well and defeating its owner', () => {
     const state = createDefaultState();
     state.nextBossAtMs = 9_999_999;

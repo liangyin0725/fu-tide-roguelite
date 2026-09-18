@@ -23,13 +23,13 @@ describe('spawn pacing', () => {
 
   it('scales boss stats by wave', () => {
     expect(getBossStats(1)).toEqual({
-      hp: 1400,
+      hp: 1560,
       damage: 20,
       speed: 52,
       experience: 60,
     });
     expect(getBossStats(3)).toEqual({
-      hp: 2800,
+      hp: 3120,
       damage: 26,
       speed: 56,
       experience: 100,

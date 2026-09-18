@@ -239,6 +239,10 @@ export class HudController {
     const bossTelegraph = telegraph
       ? `<div class="boss-telegraph"><span>劫主读招 · ${BOSS_HAZARD_NAMES[telegraph.kind]}</span><b>${formatTime(telegraph.telegraphRemainingMs)}</b></div>`
       : '';
+    const breakTarget = activeBoss && state.enemies.find((enemy) => enemy.bossBreakOwnerId === activeBoss.id);
+    const bossBreak = breakTarget
+      ? `<div class="boss-telegraph boss-break"><span>破势命门 · 打破以中断招式</span><b>${formatTime((breakTarget.bossBreakExpiresAtMs ?? state.elapsedMs) - state.elapsedMs)}</b></div>`
+      : '';
     const tribulation = state.tribulation === 'calm'
       ? `<div class="pill tribulation">天劫 ${formatTime(getTribulationEndMs(state.elapsedMs) - state.elapsedMs)}</div>`
       : `<div class="pill tribulation active" data-tribulation="${state.tribulation}">${TRIBULATION_NAMES[state.tribulation]} · ${formatTime(nextTribulationAt(state.elapsedMs) - state.elapsedMs)}</div>`;
@@ -302,6 +306,7 @@ export class HudController {
       </div>
       ${bossStatus}
       ${bossTelegraph}
+      ${bossBreak}
       ${bossObjectiveStatus}
       ${objectiveStatus}
       ${objectiveFields}

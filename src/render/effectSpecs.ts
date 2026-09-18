@@ -116,6 +116,10 @@ export function createEffectSpecs(events: CombatEvent[]): EffectSpec[] {
         return { kind: 'character-unlock', durationMs: 2200, event };
       case 'boss-cast-started':
         return { kind: 'boss-cast', durationMs: 900, event };
+      case 'boss-break-spawned':
+        return { kind: 'boss-cast', durationMs: 720, event };
+      case 'boss-break-resolved':
+        return { kind: event.success ? 'boss-phase' : 'boss-cast', durationMs: event.success ? 1000 : 360, event };
       case 'boss-skill-activated':
         return { kind: 'boss-skill', durationMs: 700, event };
       case 'boss-phase-changed':

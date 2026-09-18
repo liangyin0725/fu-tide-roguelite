@@ -11,6 +11,7 @@ import {
   drawEnemyHealth,
   drawChest,
   drawBossHazard,
+  drawBossBreakTarget,
   drawOrbitingBlades,
   drawPlayerStatus,
   drawProjectile,
@@ -541,13 +542,9 @@ export class GameScene extends Phaser.Scene {
     this.syncMap(
       this.enemyGraphics,
       this.simulation.state.enemies,
-      (graphics, enemy) => drawEnemyHealth(
-        graphics,
-        enemy.x,
-        enemy.y,
-        enemy.hp / enemy.maxHp,
-        enemy.kind === 'boss',
-      ),
+      (graphics, enemy) => enemy.bossBreakOwnerId
+        ? drawBossBreakTarget(graphics, enemy.x, enemy.y, enemy.hp / enemy.maxHp, this.time.now)
+        : drawEnemyHealth(graphics, enemy.x, enemy.y, enemy.hp / enemy.maxHp, enemy.kind === 'boss'),
     );
     this.syncEnemySprites();
     this.syncMap(this.projectileGraphics, this.simulation.state.projectiles, (graphics, projectile) =>
@@ -610,6 +607,10 @@ export class GameScene extends Phaser.Scene {
       }
     }
     for (const enemy of enemies) {
+      if (enemy.bossBreakOwnerId) {
+        this.enemySprites.get(enemy.id)?.setVisible(false);
+        continue;
+      }
       const key: PixelSpriteKey = enemy.kind === 'boss'
         ? `boss-${enemy.bossType ?? 'crimson'}`
         : enemy.archetype;
@@ -621,6 +622,7 @@ export class GameScene extends Phaser.Scene {
         sprite.setTexture(key);
       }
       sprite.setPosition(Math.round(enemy.x), Math.round(enemy.y));
+      sprite.setVisible(true);
       sprite.setFrame(Math.floor((this.time.now + enemy.id * 41) / 210) % 2);
       sprite.setFlipX(enemy.x > this.simulation.state.player.x);
       const objectiveTint = enemy.objectiveKind === 'thunder-pillar'

@@ -474,6 +474,8 @@ const EN_TEXT: Record<string, string> = {
   '反击扩散至附近敌人': 'Counterattacks spread to nearby enemies.',
   '反照范围与伤害大幅提高': 'Reflection radius and damage greatly increased.',
   '天劫': 'Tribulation',
+  '破势命门': 'Break Sigil',
+  '打破以中断招式': 'Destroy to Interrupt',
   '雷印': 'Thunder Seal',
   '血印': 'Blood Seal',
   '霜印': 'Frost Seal',

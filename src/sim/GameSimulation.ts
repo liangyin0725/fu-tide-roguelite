@@ -301,6 +301,7 @@ export class GameSimulation {
     this.updateBossPhases();
     this.updateBossSkills(deltaMs);
     this.updateBossHazards(deltaMs);
+    this.expireBossBreakTargets();
     if (!this.state.playerDowned) this.movePlayer(this.state.player, deltaMs, resolvedInput.move);
     if (this.state.partner && !this.state.partner.downed) {
       this.movePlayer(this.state.partner, deltaMs, resolvedInput.partner?.move ?? { x: 0, y: 0 });
@@ -932,7 +933,7 @@ export class GameSimulation {
   }
 
   private updateBossPhases(): void {
-    for (const boss of this.state.enemies) {
+    for (const boss of [...this.state.enemies]) {
       if (boss.kind !== 'boss') continue;
       const currentPhase = boss.bossPhase ?? 1;
       const nextPhase = currentPhase === 1 && boss.hp <= boss.maxHp * 0.65
@@ -946,6 +947,7 @@ export class GameSimulation {
       this.state.bossHazards = this.state.bossHazards.filter(
         (hazard) => hazard.ownerBossId !== boss.id,
       );
+      this.clearBossBreakTargets(boss.id);
       this.events.push({
         type: 'boss-phase-changed',
         x: boss.x,
@@ -1032,6 +1034,11 @@ export class GameSimulation {
           () => this.nextRandom(),
         );
         this.state.bossHazards.push(...hazards);
+        this.spawnBossBreakTarget(
+          boss,
+          this.getNearestLivingPlayerEntity(boss),
+          Math.max(...hazards.map((hazard) => hazard.telegraphRemainingMs)),
+        );
         this.events.push({
           type: 'boss-cast-started',
           x: boss.x,
@@ -1062,9 +1069,54 @@ export class GameSimulation {
     }
   }
 
+  private spawnBossBreakTarget(boss: Enemy, player: Vector, telegraphMs: number): void {
+    this.clearBossBreakTargets(boss.id);
+    const direction = normalize({ x: player.x - boss.x, y: player.y - boss.y });
+    const target = this.spawnEnemy({
+      x: boss.x + direction.x * 126,
+      y: boss.y + direction.y * 126,
+      hp: 90 + (boss.bossWave ?? 1) * 40,
+      speed: 0,
+      damage: 0,
+      experience: 0,
+      radius: 24,
+      kind: 'normal',
+    });
+    target.bossBreakOwnerId = boss.id;
+    target.bossBreakExpiresAtMs = this.state.elapsedMs + telegraphMs;
+    this.events.push({
+      type: 'boss-break-spawned',
+      x: target.x,
+      y: target.y,
+      bossType: boss.bossType ?? 'crimson',
+      expiresAtMs: target.bossBreakExpiresAtMs,
+    });
+  }
+
+  private expireBossBreakTargets(): void {
+    for (const target of this.state.enemies) {
+      if (!target.bossBreakOwnerId || (target.bossBreakExpiresAtMs ?? 0) > this.state.elapsedMs) continue;
+      const owner = this.state.enemies.find((candidate) => candidate.id === target.bossBreakOwnerId);
+      this.events.push({
+        type: 'boss-break-resolved',
+        x: target.x,
+        y: target.y,
+        bossType: owner?.bossType ?? 'crimson',
+        success: false,
+      });
+    }
+    this.state.enemies = this.state.enemies.filter((target) => (
+      !target.bossBreakOwnerId || (target.bossBreakExpiresAtMs ?? 0) > this.state.elapsedMs
+    ));
+  }
+
+  private clearBossBreakTargets(bossId: number): void {
+    this.state.enemies = this.state.enemies.filter((enemy) => enemy.bossBreakOwnerId !== bossId);
+  }
+
   private moveEnemies(deltaMs: number): void {
     for (const enemy of this.state.enemies) {
-      if (enemy.objectiveKind || enemy.bossObjectiveKind) continue;
+      if (enemy.objectiveKind || enemy.bossObjectiveKind || enemy.bossBreakOwnerId) continue;
       if (enemy.kind === 'boss' && (enemy.bossArenaStunnedUntilMs ?? 0) > this.state.elapsedMs) continue;
       const targetPlayer = this.getNearestLivingPlayerEntity(enemy);
       const towardPlayer = normalize({
@@ -1845,7 +1897,15 @@ export class GameSimulation {
     const survivors = [];
     for (const enemy of this.state.enemies) {
       if (enemy.hp <= 0) {
-        if (enemy.bossObjectiveKind) {
+        if (enemy.bossBreakOwnerId) {
+          const owner = this.state.enemies.find((candidate) => candidate.id === enemy.bossBreakOwnerId);
+          if (owner?.kind === 'boss') {
+            owner.bossArenaStunnedUntilMs = this.state.elapsedMs + 3_000;
+            owner.bossArenaVulnerableUntilMs = this.state.elapsedMs + 8_000;
+            this.state.bossHazards = this.state.bossHazards.filter((hazard) => hazard.ownerBossId !== owner.id);
+            this.events.push({ type: 'boss-break-resolved', x: enemy.x, y: enemy.y, bossType: owner.bossType ?? 'crimson', success: true });
+          }
+        } else if (enemy.bossObjectiveKind) {
           const owner = this.state.enemies.find((candidate) => candidate.id === enemy.ownerBossId);
           if (owner?.kind === 'boss') {
             owner.bossArenaStunnedUntilMs = this.state.elapsedMs + 4000;
@@ -1937,6 +1997,7 @@ export class GameSimulation {
           this.state.bossHazards = this.state.bossHazards.filter(
             (hazard) => hazard.ownerBossId !== enemy.id,
           );
+          this.clearBossBreakTargets(enemy.id);
           if (this.state.activeBossObjectiveId !== null) {
             const target = this.state.enemies.find((candidate) => candidate.id === this.state.activeBossObjectiveId);
             if (target?.ownerBossId === enemy.id) {

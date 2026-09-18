@@ -107,6 +107,31 @@ export function drawEnemyHealth(
   graphics.fillRect(x - width / 2 + 1, y - offset + 1, (width - 2) * Math.max(0, hpRatio), 3);
 }
 
+export function drawBossBreakTarget(
+  graphics: Phaser.GameObjects.Graphics,
+  x: number,
+  y: number,
+  hpRatio: number,
+  timeMs: number,
+): void {
+  graphics.clear();
+  graphics.setDepth(9);
+  const pulse = Math.sin(timeMs * 0.012) * 4;
+  graphics.fillStyle(0x8d7cff, 0.16);
+  graphics.fillCircle(x, y, 42 + pulse);
+  graphics.lineStyle(5, 0xf6d365, 0.92);
+  graphics.strokeCircle(x, y, 29 + pulse * 0.5);
+  graphics.lineStyle(2, 0xffffff, 0.9);
+  graphics.strokeCircle(x, y, 18);
+  graphics.fillStyle(0xff4fa3, 0.92);
+  graphics.fillTriangle(x, y - 14, x + 14, y, x, y + 14);
+  graphics.fillTriangle(x, y - 14, x - 14, y, x, y + 14);
+  graphics.fillStyle(0x080912, 0.92);
+  graphics.fillRect(x - 26, y - 43, 52, 6);
+  graphics.fillStyle(0xf6d365, 1);
+  graphics.fillRect(x - 25, y - 42, 50 * Math.max(0, hpRatio), 4);
+}
+
 export function createEntityGraphic(scene: Phaser.Scene): Phaser.GameObjects.Graphics {
   return scene.add.graphics().setDepth(5);
 }

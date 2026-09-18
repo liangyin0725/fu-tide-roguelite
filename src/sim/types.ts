@@ -280,6 +280,8 @@ export interface Enemy {
   bossArenaEnraged?: boolean;
   bossArenaVulnerableUntilMs?: number;
   bossArenaStunnedUntilMs?: number;
+  bossBreakOwnerId?: number;
+  bossBreakExpiresAtMs?: number;
   slowMultiplier: number;
   slowUntilMs: number;
   freezeUntilMs: number;
@@ -510,6 +512,8 @@ export type CombatEvent =
     }
   | { type: 'boss-skill-activated'; x: number; y: number; bossType: BossType; kind: BossHazardKind }
   | { type: 'boss-cast-started'; x: number; y: number; bossType: BossType; kind: 'primary' | 'secondary' }
+  | { type: 'boss-break-spawned'; x: number; y: number; bossType: BossType; expiresAtMs: number }
+  | { type: 'boss-break-resolved'; x: number; y: number; bossType: BossType; success: boolean }
   | { type: 'boss-healed'; x: number; y: number; bossType: BossType; amount: number }
   | { type: 'star-volley'; x: number; y: number; count: number; awakened?: boolean }
   | { type: 'bullet-reprisal'; x: number; y: number; radius: number; awakened?: boolean; style?: 'mirror-sigil' | 'void-bell' }

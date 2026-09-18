@@ -27,7 +27,7 @@ export function getBossWaveBeforeElapsed(elapsedMs: number): number {
 export function getBossStats(wave: number): BossStats {
   const growth = Math.max(0, wave - 1);
   return {
-    hp: 1400 + growth * 700,
+    hp: 1560 + growth * 780,
     damage: 20 + growth * 3,
     speed: 52 + Math.min(28, growth * 2),
     experience: 60 + growth * 20,
