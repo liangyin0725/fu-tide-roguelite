@@ -1,49 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { isUpgradeAwakened } from '../../src/sim/awakening';
-import { GameSimulation } from '../../src/sim/GameSimulation';
+import { getAwakeningRequirement, isUpgradeAwakened } from '../../src/sim/awakening';
 import { createDefaultState } from '../../src/sim/state';
 import { applyUpgrade } from '../../src/sim/upgrades';
 
-describe('resonant awakenings', () => {
-  it('keeps meteor seal at its level-five form until its matching enhancement is equipped', () => {
+describe('skill awakenings', () => {
+  it.each([
+    'meteor-seal',
+    'spirit-sword-rain',
+    'rift-return',
+    'solar-ray',
+  ] as const)('awakens %s at level six without a matching enhancement', (skill) => {
     const state = createDefaultState();
     let result;
 
-    for (let level = 0; level < 6; level += 1) result = applyUpgrade(state, 'meteor-seal');
+    for (let level = 0; level < 6; level += 1) result = applyUpgrade(state, skill);
 
-    expect(result?.awakened).toBe(false);
-    expect(isUpgradeAwakened(state.player, 'meteor-seal')).toBe(false);
-    expect(state.player).toMatchObject({ meteorCooldownMs: 4200, meteorCount: 1, meteorDamage: 85 });
-
-    applyUpgrade(state, 'boss-slayer');
-
-    expect(isUpgradeAwakened(state.player, 'meteor-seal')).toBe(true);
-    expect(state.player).toMatchObject({ meteorCooldownMs: 3600, meteorCount: 3, meteorDamage: 105 });
-  });
-
-  it.each([
-    ['spirit-sword-rain', 'multi-swords'],
-    ['rift-return', 'piercing-swords'],
-    ['solar-ray', 'faster-swords'],
-  ] as const)('requires %s to pair with %s before it awakens', (skill, enhancement) => {
-    const state = createDefaultState();
-    for (let level = 0; level < 6; level += 1) applyUpgrade(state, skill);
-
-    expect(isUpgradeAwakened(state.player, skill)).toBe(false);
-    applyUpgrade(state, enhancement);
+    expect(result).toEqual({ previousLevel: 5, level: 6, awakened: true });
     expect(isUpgradeAwakened(state.player, skill)).toBe(true);
   });
 
-  it('plays the deferred awakening when a treasure supplies the matching enhancement', () => {
-    const state = createDefaultState();
-    for (let level = 0; level < 6; level += 1) applyUpgrade(state, 'meteor-seal');
-    state.phase = 'treasure';
-    state.treasureChoices = ['boss-slayer'];
-    const sim = new GameSimulation(state);
-
-    sim.chooseTreasure('boss-slayer');
-
-    expect(state.phase).toBe('awakening');
-    expect(state.awakeningNotice?.upgrade).toBe('meteor-seal');
+  it.each([
+    'meteor-seal',
+    'spirit-sword-rain',
+    'rift-return',
+    'solar-ray',
+  ] as const)('does not advertise a matching enhancement requirement for %s', (skill) => {
+    expect(getAwakeningRequirement(skill)).toBeNull();
   });
 });

@@ -38,15 +38,14 @@ describe('new six-level skills', () => {
     ]));
   });
   it.each([
-    ['solar-ray', 'faster-swords'],
-    ['void-bell', null],
-    ['spirit-sword-rain', 'multi-swords'],
-  ] as const)('awakens %s when its resonance is complete', (skill, enhancement) => {
+    'solar-ray',
+    'void-bell',
+    'spirit-sword-rain',
+  ] as const)('awakens %s when it reaches level six', (skill) => {
     const state = createDefaultState();
     let result;
     for (let level = 0; level < 6; level += 1) result = applyUpgrade(state, skill);
-    expect(result?.awakened).toBe(enhancement === null);
-    if (enhancement) applyUpgrade(state, enhancement);
+    expect(result?.awakened).toBe(true);
     expect(state.player.upgradeLevels[skill]).toBe(6);
   });
 
