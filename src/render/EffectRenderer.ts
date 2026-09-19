@@ -767,6 +767,8 @@ function drawMeteor(
   drawRing(graphics, x, y, 12 + progress * 72, 0xff5a42, fade, 8);
   drawRing(graphics, x, y, 8 + progress * 48, 0xf6d365, fade, 3);
   if (awakened) {
+    graphics.fillStyle(0xffffff, fade * 0.22);
+    graphics.fillCircle(x, y, 18 + progress * 18);
     drawRing(graphics, x, y, 18 + progress * 110, 0xffffff, fade * 0.7, 3);
     drawRing(graphics, x, y, 26 + progress * 138, 0xff5a42, fade * 0.34, 8);
     for (let index = 0; index < 6; index += 1) {
@@ -777,6 +779,20 @@ function drawMeteor(
         y + Math.sin(angle) * 26,
         x + Math.cos(angle) * (74 + progress * 72),
         y + Math.sin(angle) * (74 + progress * 72),
+      );
+    }
+    for (let index = 0; index < 8; index += 1) {
+      const angle = index * Math.PI / 4 - progress * 2.6;
+      const distance = 38 + progress * 112;
+      const shard = 6 + (1 - progress) * 8;
+      graphics.fillStyle(index % 2 === 0 ? 0xf6d365 : 0xffffff, fade * 0.82);
+      graphics.fillTriangle(
+        x + Math.cos(angle) * distance,
+        y + Math.sin(angle) * distance,
+        x + Math.cos(angle + 0.1) * (distance + shard * 2.3),
+        y + Math.sin(angle + 0.1) * (distance + shard * 2.3),
+        x + Math.cos(angle - 0.1) * (distance + shard * 2.3),
+        y + Math.sin(angle - 0.1) * (distance + shard * 2.3),
       );
     }
   }
@@ -815,6 +831,11 @@ function drawFrost(
   }
   const radius = 12 + progress * (frozen ? 46 : 30);
   drawRing(graphics, x, y, radius, 0x8ffcff, fade, frozen ? 7 : 4);
+  if (frozen) {
+    graphics.fillStyle(0xb9f8ff, fade * 0.2);
+    graphics.fillCircle(x, y, radius * 0.56);
+    drawRing(graphics, x, y, radius * 1.32, 0xffffff, fade * 0.38, 2);
+  }
   graphics.lineStyle(3, 0xffffff, fade);
   for (let index = 0; index < 6; index += 1) {
     const angle = index * (Math.PI / 3);
@@ -975,6 +996,10 @@ function drawActiveCast(
 ): void {
   const { x, y, angle } = event;
   if (event.skill === 'talisman-ruin') {
+    const forwardX = Math.cos(angle);
+    const forwardY = Math.sin(angle);
+    graphics.fillStyle(0xff4e44, fade * 0.14);
+    graphics.fillCircle(x + forwardX * (32 + progress * 54), y + forwardY * (32 + progress * 54), 30 + progress * 42);
     drawRing(graphics, x, y, 20 + progress * 112, 0xff4e44, fade, 10);
     drawRing(graphics, x, y, 12 + progress * 78, 0xf6d365, fade * 0.9, 3);
     for (let index = 0; index < 6; index += 1) {
@@ -987,6 +1012,14 @@ function drawActiveCast(
       graphics.fillRect(talismanX - size / 2, talismanY - size, size, size * 2);
       graphics.lineStyle(2, 0xffffff, fade * 0.82);
       graphics.strokeRect(talismanX - size / 2, talismanY - size, size, size * 2);
+    }
+    for (let index = 0; index < 3; index += 1) {
+      const distance = 54 + progress * 112 + index * 18;
+      const sealX = x + forwardX * distance;
+      const sealY = y + forwardY * distance;
+      const sealSize = 9 + progress * 13;
+      graphics.lineStyle(3, index === 1 ? 0xffffff : 0xf6d365, fade * (0.82 - index * 0.16));
+      graphics.strokeRect(sealX - sealSize, sealY - sealSize, sealSize * 2, sealSize * 2);
     }
     return;
   }
@@ -1008,6 +1041,9 @@ function drawActiveCast(
       graphics.fillStyle(index === 1 ? 0xffffff : 0xa96dff, fade * (0.46 - index * 0.08));
       graphics.fillCircle(x + forwardX * ghost, y + forwardY * ghost, 10 - index * 2);
     }
+    drawRing(graphics, x + forwardX * reach, y + forwardY * reach, width * 0.9, 0xf1d8ff, fade * 0.76, 3);
+    graphics.lineStyle(2, 0xffffff, fade * 0.72);
+    graphics.lineBetween(x + forwardX * reach - sideX * width, y + forwardY * reach - sideY * width, x + forwardX * reach + sideX * width, y + forwardY * reach + sideY * width);
     return;
   }
 
@@ -1024,6 +1060,14 @@ function drawActiveCast(
   graphics.lineStyle(3, 0xffffff, fade * 0.8);
   graphics.lineBetween(x - radius * 0.7, y, x + radius * 0.7, y);
   graphics.lineBetween(x, y - radius * 0.7, x, y + radius * 0.7);
+  for (let index = 0; index < 4; index += 1) {
+    const markAngle = angle - progress * Math.PI * 2 + index * Math.PI / 2;
+    const markRadius = radius * 0.82;
+    const markX = x + Math.cos(markAngle) * markRadius;
+    const markY = y + Math.sin(markAngle) * markRadius;
+    graphics.lineStyle(2, index % 2 === 0 ? 0x8ffcff : 0xf6d365, fade * 0.86);
+    graphics.strokeRect(markX - 4, markY - 8, 8, 16);
+  }
 }
 
 function createDamageLabel(scene: Phaser.Scene, event: CombatEvent): Phaser.GameObjects.Text | undefined {
@@ -1089,6 +1133,18 @@ function drawLightning(
       graphics.lineBetween(point.x, point.y, point.x + (index % 4 ? 22 : -22), point.y - 30);
     }
     drawRing(graphics, event.toX, event.toY, 12 + progress * 28, 0x61f5ff, fade * 0.74, 3);
+    graphics.fillStyle(0xffffff, fade * 0.56);
+    graphics.fillCircle(event.toX, event.toY, 7 + (1 - progress) * 8);
+    for (let index = 0; index < 4; index += 1) {
+      const angle = progress * 5 + index * Math.PI / 2;
+      graphics.lineStyle(3, primary, fade * 0.82);
+      graphics.lineBetween(
+        event.toX + Math.cos(angle) * 12,
+        event.toY + Math.sin(angle) * 12,
+        event.toX + Math.cos(angle) * (34 + progress * 20),
+        event.toY + Math.sin(angle) * (34 + progress * 20),
+      );
+    }
   }
   if (!stormNet && !solarRay) {
     for (const index of [2, 4]) {
@@ -1129,6 +1185,8 @@ function drawFireBurst(
   drawRing(graphics, x, y, currentRadius, 0xff5a42, fade, 10);
   drawRing(graphics, x, y, currentRadius * 0.72, 0xf6d365, fade * 0.9, 3);
   if (awakened) {
+    graphics.fillStyle(0xff5a42, fade * 0.18);
+    graphics.fillCircle(x, y, currentRadius * 0.72);
     drawRing(graphics, x, y, currentRadius * 0.42, 0xffffff, fade * 0.75, 5);
     drawRing(graphics, x, y, currentRadius * 1.08, 0xff5a42, fade * 0.48, 4);
     for (let index = 0; index < 12; index += 1) {
@@ -1141,6 +1199,20 @@ function drawFireBurst(
         y + Math.sin(angle) * inner,
         x + Math.cos(angle) * outer,
         y + Math.sin(angle) * outer,
+      );
+    }
+    for (let index = 0; index < 8; index += 1) {
+      const angle = index * Math.PI / 4 + progress * 2.2;
+      const distance = currentRadius * (0.58 + progress * 0.48);
+      const ember = 6 + (1 - progress) * 8;
+      graphics.fillStyle(index % 2 === 0 ? 0xffffff : 0xf6d365, fade * 0.9);
+      graphics.fillTriangle(
+        x + Math.cos(angle) * distance,
+        y + Math.sin(angle) * distance,
+        x + Math.cos(angle + 0.14) * (distance + ember * 2),
+        y + Math.sin(angle + 0.14) * (distance + ember * 2),
+        x + Math.cos(angle - 0.14) * (distance + ember * 2),
+        y + Math.sin(angle - 0.14) * (distance + ember * 2),
       );
     }
   }

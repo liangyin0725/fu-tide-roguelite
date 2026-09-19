@@ -84,9 +84,9 @@ export function createEffectSpecs(events: CombatEvent[]): EffectSpec[] {
       case 'shield-blocked':
         return { kind: 'shield', durationMs: 420, event };
       case 'chain-lightning':
-        return { kind: 'lightning', durationMs: 180, event };
+        return { kind: 'lightning', durationMs: event.awakened ? 300 : 180, event };
       case 'fire-burst':
-        return { kind: 'fire', durationMs: 520, event };
+        return { kind: 'fire', durationMs: event.awakened ? 700 : 520, event };
       case 'level-up':
         return { kind: 'level', durationMs: 1050, event };
       case 'boss-spawned':
@@ -98,7 +98,7 @@ export function createEffectSpecs(events: CombatEvent[]): EffectSpec[] {
       case 'skill-awakened':
         return { kind: 'awakening', durationMs: 2300, event };
       case 'meteor-strike':
-        return { kind: 'meteor', durationMs: 620, event };
+        return { kind: 'meteor', durationMs: event.awakened ? 820 : 620, event };
       case 'dodge':
         return { kind: 'dodge', durationMs: 360, event };
       case 'frost-hit':
