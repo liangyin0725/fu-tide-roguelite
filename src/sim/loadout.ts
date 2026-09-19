@@ -39,7 +39,7 @@ export function recalculatePlayerBuild(player: Player): void {
   player.speed *= 1 + player.insightLevels['insight:speed'] * 0.04;
   player.pickupRadius += player.insightLevels['insight:pickup'] * 14;
   if (player.characterId === 'xuan-jian') {
-    player.attackDamage *= 1.15;
+    player.attackDamage *= 1.1;
   } else if (player.characterId === 'lei-zhuan') {
     player.maxHp *= 0.9;
     player.thunderDamagePerSecond *= 1.2;

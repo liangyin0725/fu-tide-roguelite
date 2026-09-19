@@ -19,7 +19,7 @@ describe('character system', () => {
     const sword = createDefaultState();
     sword.player.characterId = 'xuan-jian';
     recalculatePlayerBuild(sword.player);
-    expect(sword.player.attackDamage).toBeCloseTo(18 * 1.15);
+    expect(sword.player.attackDamage).toBeCloseTo(18 * 1.1);
 
     const thunder = createDefaultState();
     thunder.player.characterId = 'lei-zhuan';
@@ -53,7 +53,7 @@ describe('character system', () => {
 
     recalculatePlayerBuild(player);
 
-    expect(player.attackDamage).toBeCloseTo(18 * 1.15 * 1.08);
+    expect(player.attackDamage).toBeCloseTo(18 * 1.1 * 1.08);
     expect(player.thunderDamagePerSecond).toBe(10);
   });
 

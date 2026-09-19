@@ -9,7 +9,7 @@ export interface CharacterDefinition {
 }
 
 export const CHARACTERS: Record<CharacterId, CharacterDefinition> = {
-  'xuan-jian': { name: '玄剑', symbol: '剑', trait: '飞剑基础伤害提高 15%' },
+  'xuan-jian': { name: '玄剑', symbol: '剑', trait: '飞剑基础伤害提高 10%' },
   'lei-zhuan': { name: '雷篆', symbol: '雷', trait: '术法伤害提高 20%，最大生命降低 10%' },
   'shou-yi': { name: '守一', symbol: '守', trait: '最大生命和护盾提高 25%，移动速度降低 5%' },
   'jing-po': {

@@ -226,7 +226,7 @@ const EN_TEXT: Record<string, string> = {
   '遗物': 'Relic',
   '已圆满': 'Complete',
   '锻造': 'Forge',
-  '飞剑基础伤害提高 15%': 'Base sword damage +15%.',
+  '飞剑基础伤害提高 10%': 'Base sword damage +10%.',
   '术法伤害提高 20%，最大生命降低 10%': 'Arcane damage +20%; maximum health -10%.',
   '最大生命和护盾提高 25%，移动速度降低 5%': 'Maximum health and shield +25%; move speed -5%.',
   '镜阵与弹幕反击强化，擅长反射弹幕和控场': 'Mirror wards and projectile reprisals improved; excels at reflection and control.',
