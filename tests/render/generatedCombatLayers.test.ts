@@ -16,4 +16,8 @@ describe('generated combat replacement layers', () => {
   it('does not stack procedural event art under generated decals', () => {
     expect(effectRendererSource).toContain('if (effect.decal) return;');
   });
+
+  it('anchors rotating persistent effects around their calibrated visual centres', () => {
+    expect(gameSceneSource).toContain('.setOrigin(visual.originX, visual.originY)');
+  });
 });

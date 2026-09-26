@@ -744,6 +744,7 @@ export class GameScene extends Phaser.Scene {
       image
         .setVisible(visual.visible)
         .setPosition(Math.round(player.x), Math.round(player.y))
+        .setOrigin(visual.originX, visual.originY)
         .setDisplaySize(visual.diameter, visual.diameter)
         .setAlpha(visual.alpha)
         .setRotation(visual.rotation);

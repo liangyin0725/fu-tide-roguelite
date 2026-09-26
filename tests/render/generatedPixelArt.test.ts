@@ -156,10 +156,18 @@ describe('generated pixel-art asset manifest', () => {
       timeMs: 1000,
     });
 
-    expect(visuals['thunder-ring']).toMatchObject({ visible: true, diameter: 338, alpha: 0.58 });
-    expect(visuals['orbiting-blades']).toMatchObject({ visible: true, diameter: 252 });
-    expect(visuals['golden-shield']).toMatchObject({ visible: true, diameter: 120 });
-    expect(visuals['awakening-formation']).toMatchObject({ visible: true, diameter: 304 });
+    expect(visuals['thunder-ring']).toMatchObject({
+      visible: true, diameter: 338, alpha: 0.58, originX: 0.5, originY: 0.485,
+    });
+    expect(visuals['orbiting-blades']).toMatchObject({
+      visible: true, diameter: 252, originX: 0.499, originY: 0.485,
+    });
+    expect(visuals['golden-shield']).toMatchObject({
+      visible: true, diameter: 120, originX: 0.5, originY: 0.489,
+    });
+    expect(visuals['awakening-formation']).toMatchObject({
+      visible: true, diameter: 304, originX: 0.486, originY: 0.481,
+    });
     expect(Math.max(...Object.values(visuals).map((visual) => visual.alpha))).toBeGreaterThan(0.6);
   });
 

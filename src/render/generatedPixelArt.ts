@@ -153,6 +153,8 @@ export interface PersistentEffectVisual {
   diameter: number;
   alpha: number;
   rotation: number;
+  originX: number;
+  originY: number;
 }
 
 export function generatedArenaTextureKey(tribulation: TribulationType): string {
@@ -280,24 +282,32 @@ export function getPersistentEffectVisuals(
       diameter: input.thunderRadius * 2 + 38,
       alpha: 0.58,
       rotation: input.timeMs * 0.00042,
+      originX: 0.5,
+      originY: 0.485,
     },
     'orbiting-blades': {
       visible: input.orbitingBladeCount > 0,
       diameter: input.orbitingBladeRadius * 2 + 72,
       alpha: Math.min(0.68, 0.46 + input.orbitingBladeCount * 0.025),
       rotation: -input.timeMs * 0.00055,
+      originX: 0.499,
+      originY: 0.485,
     },
     'golden-shield': {
       visible: barrierActive || input.shield > 0,
       diameter: barrierActive ? input.activeBarrierRadius * 2 + 36 : 120,
       alpha: barrierActive ? 0.68 : 0.48,
       rotation: input.timeMs * 0.0003,
+      originX: 0.5,
+      originY: 0.489,
     },
     'awakening-formation': {
       visible: input.awakenedSkillCount > 0,
       diameter: 220 + input.awakenedSkillCount * 28,
       alpha: Math.min(0.62, 0.34 + input.awakenedSkillCount * 0.055),
       rotation: input.timeMs * 0.00018,
+      originX: 0.486,
+      originY: 0.481,
     },
   };
 }
