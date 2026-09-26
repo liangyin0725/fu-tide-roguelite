@@ -1299,6 +1299,13 @@ button {
     transform: translateX(-50%);
   }
 
+  .beta-loadout-panel {
+    top: 8px;
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    padding: 14px;
+  }
+
   .upgrade {
     min-height: 128px;
   }
