@@ -2,7 +2,9 @@ import type Phaser from 'phaser';
 import {
   GENERATED_ARENA_CELLS,
   GENERATED_EFFECT_CELLS,
+  GENERATED_ENEMY_PROJECTILE_CELLS,
   GENERATED_PIXEL_ASSETS,
+  GENERATED_PERSISTENT_EFFECT_CELLS,
   GENERATED_SPRITE_CELLS,
   generatedArenaTextureKey,
   type GeneratedAtlasCell,
@@ -139,6 +141,12 @@ function registerGeneratedPixelTextures(scene: Phaser.Scene): void {
   }
   for (const [effect, cell] of Object.entries(GENERATED_EFFECT_CELLS)) {
     createCellTexture(scene, `generated-vfx-${effect}`, cell, false);
+  }
+  for (const [kind, cell] of Object.entries(GENERATED_ENEMY_PROJECTILE_CELLS)) {
+    createCellTexture(scene, `generated-enemy-${kind}`, cell, false);
+  }
+  for (const [effect, cell] of Object.entries(GENERATED_PERSISTENT_EFFECT_CELLS)) {
+    createCellTexture(scene, `generated-persistent-${effect}`, cell, false);
   }
 }
 

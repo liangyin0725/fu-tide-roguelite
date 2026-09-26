@@ -1,4 +1,9 @@
-import type { CombatEvent, Projectile, TribulationType } from '../sim/types';
+import type {
+  CombatEvent,
+  EnemyProjectileKind,
+  Projectile,
+  TribulationType,
+} from '../sim/types';
 import type { PixelSpriteKey } from './pixelArt';
 
 export type GeneratedAtlasKey = keyof typeof GENERATED_PIXEL_ASSETS;
@@ -33,6 +38,12 @@ export const GENERATED_PIXEL_ASSETS = {
   worldVfx: {
     textureKey: 'generated-atlas-world-vfx',
     url: '/assets/generated/world-vfx-atlas.png',
+    columns: 4,
+    rows: 2,
+  },
+  combat: {
+    textureKey: 'generated-atlas-combat',
+    url: '/assets/generated/combat-atlas.png',
     columns: 4,
     rows: 2,
   },
@@ -75,7 +86,39 @@ export const GENERATED_EFFECT_CELLS = {
   frost: { atlas: 'worldVfx', column: 3, row: 1, outputSize: 192 },
 } as const satisfies Record<string, GeneratedAtlasCell>;
 
+export const GENERATED_ENEMY_PROJECTILE_CELLS = {
+  bolt: { atlas: 'combat', column: 0, row: 0, outputSize: 96 },
+  'fan-seal': { atlas: 'combat', column: 1, row: 0, outputSize: 96 },
+  'soul-orb': { atlas: 'combat', column: 2, row: 0, outputSize: 96 },
+} as const satisfies Record<EnemyProjectileKind, GeneratedAtlasCell>;
+
+export const GENERATED_PERSISTENT_EFFECT_CELLS = {
+  'thunder-ring': { atlas: 'combat', column: 0, row: 1, outputSize: 384 },
+  'orbiting-blades': { atlas: 'combat', column: 1, row: 1, outputSize: 384 },
+  'golden-shield': { atlas: 'combat', column: 2, row: 1, outputSize: 384 },
+  'awakening-formation': { atlas: 'combat', column: 3, row: 1, outputSize: 384 },
+} as const satisfies Record<string, GeneratedAtlasCell>;
+
 export type GeneratedEffectTextureKey = `generated-vfx-${keyof typeof GENERATED_EFFECT_CELLS}`;
+export type PersistentEffectKey = keyof typeof GENERATED_PERSISTENT_EFFECT_CELLS;
+
+export interface PersistentEffectInput {
+  thunderRadius: number;
+  orbitingBladeCount: number;
+  orbitingBladeRadius: number;
+  shield: number;
+  activeBarrierRemainingMs: number;
+  activeBarrierRadius: number;
+  awakenedSkillCount: number;
+  timeMs: number;
+}
+
+export interface PersistentEffectVisual {
+  visible: boolean;
+  diameter: number;
+  alpha: number;
+  rotation: number;
+}
 
 export function generatedArenaTextureKey(tribulation: TribulationType): string {
   return `generated-arena-${tribulation}`;
@@ -110,6 +153,48 @@ export function getGeneratedProjectileTexture(
   if (kind === 'star') return 'generated-vfx-lightning';
   if (kind === 'glyph') return 'generated-vfx-frost';
   return 'generated-vfx-sword';
+}
+
+export function getGeneratedEnemyProjectileTexture(kind: EnemyProjectileKind): string {
+  return `generated-enemy-${kind}`;
+}
+
+export function getGeneratedEnemyProjectileScale(kind: EnemyProjectileKind): number {
+  if (kind === 'soul-orb') return 0.34;
+  if (kind === 'fan-seal') return 0.28;
+  return 0.22;
+}
+
+export function getPersistentEffectVisuals(
+  input: PersistentEffectInput,
+): Record<PersistentEffectKey, PersistentEffectVisual> {
+  const barrierActive = input.activeBarrierRemainingMs > 0 && input.activeBarrierRadius > 0;
+  return {
+    'thunder-ring': {
+      visible: input.thunderRadius > 0,
+      diameter: input.thunderRadius * 2 + 38,
+      alpha: 0.58,
+      rotation: input.timeMs * 0.00042,
+    },
+    'orbiting-blades': {
+      visible: input.orbitingBladeCount > 0,
+      diameter: input.orbitingBladeRadius * 2 + 72,
+      alpha: Math.min(0.68, 0.46 + input.orbitingBladeCount * 0.025),
+      rotation: -input.timeMs * 0.00055,
+    },
+    'golden-shield': {
+      visible: barrierActive || input.shield > 0,
+      diameter: barrierActive ? input.activeBarrierRadius * 2 + 36 : 120,
+      alpha: barrierActive ? 0.68 : 0.48,
+      rotation: input.timeMs * 0.0003,
+    },
+    'awakening-formation': {
+      visible: input.awakenedSkillCount > 0,
+      diameter: 220 + input.awakenedSkillCount * 28,
+      alpha: Math.min(0.62, 0.34 + input.awakenedSkillCount * 0.055),
+      rotation: input.timeMs * 0.00018,
+    },
+  };
 }
 
 export function getGeneratedEffectOrigin(event: CombatEvent): { x: number; y: number } | null {

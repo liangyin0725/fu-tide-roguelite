@@ -3,10 +3,14 @@ import {
   GENERATED_ARENA_CELLS,
   GENERATED_EFFECT_CELLS,
   GENERATED_PIXEL_ASSETS,
+  GENERATED_PERSISTENT_EFFECT_CELLS,
   GENERATED_SPRITE_CELLS,
+  getGeneratedEnemyProjectileTexture,
   getGeneratedEffectOrigin,
   getGeneratedEffectTexture,
+  getGeneratedEnemyProjectileScale,
   getGeneratedProjectileTexture,
+  getPersistentEffectVisuals,
 } from '../../src/render/generatedPixelArt';
 
 describe('generated pixel-art asset manifest', () => {
@@ -31,6 +35,49 @@ describe('generated pixel-art asset manifest', () => {
     expect(GENERATED_PIXEL_ASSETS.actors.url).toBe('/assets/generated/actors-atlas.png');
     expect(GENERATED_PIXEL_ASSETS.bosses.url).toBe('/assets/generated/bosses-atlas.png');
     expect(GENERATED_PIXEL_ASSETS.worldVfx.url).toBe('/assets/generated/world-vfx-atlas.png');
+    expect(GENERATED_PIXEL_ASSETS.combat.url).toBe('/assets/generated/combat-atlas.png');
+  });
+
+  it('gives every enemy projectile family its own generated texture', () => {
+    expect(getGeneratedEnemyProjectileTexture('bolt')).toBe('generated-enemy-bolt');
+    expect(getGeneratedEnemyProjectileTexture('fan-seal')).toBe('generated-enemy-fan-seal');
+    expect(getGeneratedEnemyProjectileTexture('soul-orb')).toBe('generated-enemy-soul-orb');
+  });
+
+  it('provides generated textures for persistent combat fields', () => {
+    expect(Object.keys(GENERATED_PERSISTENT_EFFECT_CELLS)).toEqual([
+      'thunder-ring',
+      'orbiting-blades',
+      'golden-shield',
+      'awakening-formation',
+    ]);
+  });
+
+  it('keeps enemy projectile silhouettes distinct at combat scale', () => {
+    expect(getGeneratedEnemyProjectileScale('bolt')).toBeLessThan(
+      getGeneratedEnemyProjectileScale('fan-seal'),
+    );
+    expect(getGeneratedEnemyProjectileScale('fan-seal')).toBeLessThan(
+      getGeneratedEnemyProjectileScale('soul-orb'),
+    );
+  });
+
+  it('keeps persistent skill textures visible while their mechanics are active', () => {
+    const visuals = getPersistentEffectVisuals({
+      thunderRadius: 150,
+      orbitingBladeCount: 6,
+      orbitingBladeRadius: 90,
+      shield: 20,
+      activeBarrierRemainingMs: 0,
+      activeBarrierRadius: 0,
+      awakenedSkillCount: 3,
+      timeMs: 1000,
+    });
+
+    expect(visuals['thunder-ring']).toMatchObject({ visible: true, diameter: 338 });
+    expect(visuals['orbiting-blades'].visible).toBe(true);
+    expect(visuals['golden-shield'].visible).toBe(true);
+    expect(visuals['awakening-formation'].visible).toBe(true);
   });
 
   it('provides four arena themes and four readable skill decals', () => {

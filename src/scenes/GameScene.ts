@@ -28,7 +28,11 @@ import {
 } from '../render/pixelArt';
 import {
   generatedArenaTextureKey,
+  getGeneratedEnemyProjectileScale,
+  getGeneratedEnemyProjectileTexture,
   getGeneratedProjectileTexture,
+  getPersistentEffectVisuals,
+  type PersistentEffectKey,
 } from '../render/generatedPixelArt';
 import { EffectRenderer } from '../render/EffectRenderer';
 import { drawArenaTheme } from '../render/arenaTheme';
@@ -63,6 +67,7 @@ export class GameScene extends Phaser.Scene {
   private readonly projectileGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   private readonly projectileSprites = new Map<number, Phaser.GameObjects.Image>();
   private readonly enemyProjectileGraphics = new Map<number, Phaser.GameObjects.Graphics>();
+  private readonly enemyProjectileSprites = new Map<number, Phaser.GameObjects.Image>();
   private readonly shardGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   private readonly chestGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   private readonly bossHazardGraphics = new Map<number, Phaser.GameObjects.Graphics>();
@@ -76,6 +81,7 @@ export class GameScene extends Phaser.Scene {
   private thunderGraphic!: Phaser.GameObjects.Graphics;
   private orbitingBladeGraphic!: Phaser.GameObjects.Graphics;
   private awakeningGlyphGraphic!: Phaser.GameObjects.Graphics;
+  private readonly persistentEffectSprites = new Map<PersistentEffectKey, Phaser.GameObjects.Image>();
   private activeBarrierGraphic!: Phaser.GameObjects.Graphics;
   private effects!: EffectRenderer;
   private developmentPreviewPaused = false;
@@ -123,6 +129,20 @@ export class GameScene extends Phaser.Scene {
     this.thunderGraphic = this.add.graphics().setDepth(4).setBlendMode(Phaser.BlendModes.ADD);
     this.orbitingBladeGraphic = this.add.graphics().setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
     this.awakeningGlyphGraphic = this.add.graphics().setDepth(5.5).setBlendMode(Phaser.BlendModes.ADD);
+    for (const [key, depth] of [
+      ['thunder-ring', 3.7],
+      ['orbiting-blades', 6.7],
+      ['golden-shield', 6.2],
+      ['awakening-formation', 5.2],
+    ] as const) {
+      this.persistentEffectSprites.set(
+        key,
+        this.add.image(0, 0, `generated-persistent-${key}`)
+          .setDepth(depth)
+          .setBlendMode(Phaser.BlendModes.ADD)
+          .setVisible(false),
+      );
+    }
     this.effects = new EffectRenderer(this, () => this.settings);
     this.activeBarrierGraphic = this.add.graphics().setDepth(6).setBlendMode(Phaser.BlendModes.ADD);
     this.keys = this.input.keyboard!.addKeys('W,A,S,D,E,UP,DOWN,LEFT,RIGHT,SPACE,ENTER') as Record<
@@ -228,6 +248,7 @@ export class GameScene extends Phaser.Scene {
     this.clearEntityMap(this.projectileGraphics);
     this.clearImageMap(this.projectileSprites);
     this.clearEntityMap(this.enemyProjectileGraphics);
+    this.clearImageMap(this.enemyProjectileSprites);
     this.clearEntityMap(this.shardGraphics);
     this.clearEntityMap(this.chestGraphics);
     this.clearEntityMap(this.bossHazardGraphics);
@@ -545,6 +566,7 @@ export class GameScene extends Phaser.Scene {
       player.activeBarrierRemainingMs > 0 ? player.activeBarrierRadius : 0,
       this.time.now,
     );
+    this.renderGeneratedPersistentEffects(player);
     this.playerSprite.setPosition(Math.round(player.x), Math.round(player.y));
     const playerTexture: PixelSpriteKey = player.characterId
       ? `player-${player.characterId}`
@@ -579,6 +601,7 @@ export class GameScene extends Phaser.Scene {
       this.simulation.state.enemyProjectiles,
       (graphics, projectile) => drawEnemyProjectile(graphics, projectile),
     );
+    this.syncEnemyProjectileSprites();
     this.syncMap(this.shardGraphics, this.simulation.state.shards, (graphics, shard) =>
       drawShard(graphics, shard.x, shard.y, Math.sin(this.time.now * 0.008 + shard.id) * 2),
     );
@@ -702,6 +725,61 @@ export class GameScene extends Phaser.Scene {
         .setRotation(Math.atan2(projectile.vy, projectile.vx) + Math.PI / 2)
         .setScale((projectile.kind === 'glyph' ? 0.2 : 0.17) + pulse)
         .setAlpha(0.88);
+    }
+  }
+
+  private syncEnemyProjectileSprites(): void {
+    const projectiles = this.simulation.state.enemyProjectiles;
+    const liveIds = new Set(projectiles.map((projectile) => projectile.id));
+    for (const [id, image] of this.enemyProjectileSprites) {
+      if (!liveIds.has(id)) {
+        image.destroy();
+        this.enemyProjectileSprites.delete(id);
+      }
+    }
+    for (const projectile of projectiles) {
+      const texture = getGeneratedEnemyProjectileTexture(projectile.kind);
+      let image = this.enemyProjectileSprites.get(projectile.id);
+      if (!image) {
+        image = this.add.image(projectile.x, projectile.y, texture)
+          .setDepth(9.5)
+          .setBlendMode(Phaser.BlendModes.ADD);
+        this.enemyProjectileSprites.set(projectile.id, image);
+      } else if (image.texture.key !== texture) {
+        image.setTexture(texture);
+      }
+      const pulse = Math.sin(this.time.now * 0.016 + projectile.id) * 0.018;
+      const rotation = projectile.kind === 'soul-orb'
+        ? this.time.now * 0.0012
+        : Math.atan2(projectile.vy, projectile.vx) + Math.PI / 4;
+      image
+        .setPosition(Math.round(projectile.x), Math.round(projectile.y))
+        .setRotation(rotation)
+        .setScale(getGeneratedEnemyProjectileScale(projectile.kind) + pulse)
+        .setAlpha(0.95);
+    }
+  }
+
+  private renderGeneratedPersistentEffects(player: import('../sim/types').Player): void {
+    const visuals = getPersistentEffectVisuals({
+      thunderRadius: player.thunderRadius,
+      orbitingBladeCount: player.orbitingBladeCount,
+      orbitingBladeRadius: player.orbitingBladeRadius,
+      shield: player.shield,
+      activeBarrierRemainingMs: player.activeBarrierRemainingMs,
+      activeBarrierRadius: player.activeBarrierRadius,
+      awakenedSkillCount: getAwakenedSkills(player).length,
+      timeMs: this.time.now,
+    });
+    for (const [key, visual] of Object.entries(visuals) as [PersistentEffectKey, (typeof visuals)[PersistentEffectKey]][]) {
+      const image = this.persistentEffectSprites.get(key);
+      if (!image) continue;
+      image
+        .setVisible(visual.visible)
+        .setPosition(Math.round(player.x), Math.round(player.y))
+        .setDisplaySize(visual.diameter, visual.diameter)
+        .setAlpha(visual.alpha)
+        .setRotation(visual.rotation);
     }
   }
 
