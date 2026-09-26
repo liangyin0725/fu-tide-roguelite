@@ -160,9 +160,9 @@ export function getGeneratedEnemyProjectileTexture(kind: EnemyProjectileKind): s
 }
 
 export function getGeneratedEnemyProjectileScale(kind: EnemyProjectileKind): number {
-  if (kind === 'soul-orb') return 0.34;
-  if (kind === 'fan-seal') return 0.28;
-  return 0.22;
+  if (kind === 'soul-orb') return 0.21;
+  if (kind === 'fan-seal') return 0.18;
+  return 0.15;
 }
 
 export function getPersistentEffectVisuals(
@@ -172,26 +172,26 @@ export function getPersistentEffectVisuals(
   return {
     'thunder-ring': {
       visible: input.thunderRadius > 0,
-      diameter: input.thunderRadius * 2 + 38,
-      alpha: 0.58,
+      diameter: input.thunderRadius * 2,
+      alpha: 0.32,
       rotation: input.timeMs * 0.00042,
     },
     'orbiting-blades': {
       visible: input.orbitingBladeCount > 0,
-      diameter: input.orbitingBladeRadius * 2 + 72,
-      alpha: Math.min(0.68, 0.46 + input.orbitingBladeCount * 0.025),
+      diameter: input.orbitingBladeRadius * 2 + 24,
+      alpha: Math.min(0.38, 0.26 + input.orbitingBladeCount * 0.02),
       rotation: -input.timeMs * 0.00055,
     },
     'golden-shield': {
       visible: barrierActive || input.shield > 0,
-      diameter: barrierActive ? input.activeBarrierRadius * 2 + 36 : 120,
-      alpha: barrierActive ? 0.68 : 0.48,
+      diameter: barrierActive ? input.activeBarrierRadius * 2 + 16 : 96,
+      alpha: barrierActive ? 0.4 : 0.3,
       rotation: input.timeMs * 0.0003,
     },
     'awakening-formation': {
       visible: input.awakenedSkillCount > 0,
-      diameter: 220 + input.awakenedSkillCount * 28,
-      alpha: Math.min(0.62, 0.34 + input.awakenedSkillCount * 0.055),
+      diameter: 160 + input.awakenedSkillCount * 24,
+      alpha: Math.min(0.38, 0.24 + input.awakenedSkillCount * 0.04),
       rotation: input.timeMs * 0.00018,
     },
   };
