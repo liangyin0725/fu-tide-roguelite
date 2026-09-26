@@ -137,6 +137,7 @@ export class EffectRenderer {
     const event = spec.event;
     const fade = 1 - progress;
     graphics.clear();
+    if (effect.decal) return;
 
     if (event.type === 'damage-dealt') {
       effect.label?.setPosition(event.x, event.y - 18 - progress * 36);

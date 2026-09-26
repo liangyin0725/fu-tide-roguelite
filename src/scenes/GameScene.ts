@@ -7,18 +7,12 @@ import type { ActiveSkillId, BossType, SimulationInput, TribulationType } from '
 import { HudController } from '../ui/HudController';
 import {
   createEntityGraphic,
-  drawEnemyProjectile,
   drawEnemyHealth,
   drawChest,
   drawBossHazard,
   drawBossBreakTarget,
-  drawOrbitingBlades,
   drawPlayerStatus,
-  drawProjectile,
   drawShard,
-  drawThunderAura,
-  drawAwakenedSkillGlyphs,
-  drawActiveBarrier,
 } from '../render/ShapeFactory';
 import {
   createPixelSprite,
@@ -45,7 +39,7 @@ import {
 import { GameAudio } from '../audio/GameAudio';
 import { isBetaModePassphrase } from '../testing/betaMode';
 import { getBossWaveBeforeElapsed } from '../sim/spawnPacing';
-import { getAwakenedSkills, isUpgradeAwakened } from '../sim/awakening';
+import { getAwakenedSkills } from '../sim/awakening';
 import {
   earnDaoYun,
   earnSpiritOre,
@@ -64,9 +58,7 @@ export class GameScene extends Phaser.Scene {
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private readonly enemyGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   private readonly enemySprites = new Map<number, Phaser.GameObjects.Sprite>();
-  private readonly projectileGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   private readonly projectileSprites = new Map<number, Phaser.GameObjects.Image>();
-  private readonly enemyProjectileGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   private readonly enemyProjectileSprites = new Map<number, Phaser.GameObjects.Image>();
   private readonly shardGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   private readonly chestGraphics = new Map<number, Phaser.GameObjects.Graphics>();
@@ -78,11 +70,7 @@ export class GameScene extends Phaser.Scene {
   private arenaTexture!: Phaser.GameObjects.TileSprite;
   private gridGraphic!: Phaser.GameObjects.Graphics;
   private arenaTribulation: TribulationType = 'calm';
-  private thunderGraphic!: Phaser.GameObjects.Graphics;
-  private orbitingBladeGraphic!: Phaser.GameObjects.Graphics;
-  private awakeningGlyphGraphic!: Phaser.GameObjects.Graphics;
   private readonly persistentEffectSprites = new Map<PersistentEffectKey, Phaser.GameObjects.Image>();
-  private activeBarrierGraphic!: Phaser.GameObjects.Graphics;
   private effects!: EffectRenderer;
   private developmentPreviewPaused = false;
   private settings!: GameSettings;
@@ -126,9 +114,6 @@ export class GameScene extends Phaser.Scene {
     this.partnerSprite = createPixelSprite(this, 'player');
     this.partnerGraphic.setVisible(false);
     this.partnerSprite.setVisible(false);
-    this.thunderGraphic = this.add.graphics().setDepth(4).setBlendMode(Phaser.BlendModes.ADD);
-    this.orbitingBladeGraphic = this.add.graphics().setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
-    this.awakeningGlyphGraphic = this.add.graphics().setDepth(5.5).setBlendMode(Phaser.BlendModes.ADD);
     for (const [key, depth] of [
       ['thunder-ring', 3.7],
       ['orbiting-blades', 6.7],
@@ -144,7 +129,6 @@ export class GameScene extends Phaser.Scene {
       );
     }
     this.effects = new EffectRenderer(this, () => this.settings);
-    this.activeBarrierGraphic = this.add.graphics().setDepth(6).setBlendMode(Phaser.BlendModes.ADD);
     this.keys = this.input.keyboard!.addKeys('W,A,S,D,E,UP,DOWN,LEFT,RIGHT,SPACE,ENTER') as Record<
       string,
       Phaser.Input.Keyboard.Key
@@ -245,9 +229,7 @@ export class GameScene extends Phaser.Scene {
   private restartRun(): void {
     this.clearEntityMap(this.enemyGraphics);
     this.clearSpriteMap(this.enemySprites);
-    this.clearEntityMap(this.projectileGraphics);
     this.clearImageMap(this.projectileSprites);
-    this.clearEntityMap(this.enemyProjectileGraphics);
     this.clearImageMap(this.enemyProjectileSprites);
     this.clearEntityMap(this.shardGraphics);
     this.clearEntityMap(this.chestGraphics);
@@ -534,38 +516,6 @@ export class GameScene extends Phaser.Scene {
   private renderWorld(): void {
     if (this.arenaTribulation !== this.simulation.state.tribulation) this.drawArena();
     const { player, partner } = this.simulation.state;
-    drawThunderAura(
-      this.thunderGraphic,
-      player.x,
-      player.y,
-      player.thunderRadius,
-      this.time.now,
-      isUpgradeAwakened(player, 'thunder-ring'),
-    );
-    drawOrbitingBlades(
-      this.orbitingBladeGraphic,
-      player.x,
-      player.y,
-      player.orbitingBladeCount,
-      player.orbitingBladeRadius,
-      this.time.now,
-    );
-    drawAwakenedSkillGlyphs(
-      this.awakeningGlyphGraphic,
-      player.x,
-      player.y,
-      player.equippedSkills,
-      player.upgradeLevels,
-      this.time.now,
-      getAwakenedSkills(player),
-    );
-    drawActiveBarrier(
-      this.activeBarrierGraphic,
-      player.x,
-      player.y,
-      player.activeBarrierRemainingMs > 0 ? player.activeBarrierRadius : 0,
-      this.time.now,
-    );
     this.renderGeneratedPersistentEffects(player);
     this.playerSprite.setPosition(Math.round(player.x), Math.round(player.y));
     const playerTexture: PixelSpriteKey = player.characterId
@@ -592,15 +542,7 @@ export class GameScene extends Phaser.Scene {
         : drawEnemyHealth(graphics, enemy.x, enemy.y, enemy.hp / enemy.maxHp, enemy.kind === 'boss'),
     );
     this.syncEnemySprites();
-    this.syncMap(this.projectileGraphics, this.simulation.state.projectiles, (graphics, projectile) =>
-      drawProjectile(graphics, projectile.x, projectile.y, projectile.vx, projectile.vy, projectile.kind),
-    );
     this.syncProjectileSprites();
-    this.syncMap(
-      this.enemyProjectileGraphics,
-      this.simulation.state.enemyProjectiles,
-      (graphics, projectile) => drawEnemyProjectile(graphics, projectile),
-    );
     this.syncEnemyProjectileSprites();
     this.syncMap(this.shardGraphics, this.simulation.state.shards, (graphics, shard) =>
       drawShard(graphics, shard.x, shard.y, Math.sin(this.time.now * 0.008 + shard.id) * 2),
