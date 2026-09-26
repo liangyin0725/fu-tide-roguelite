@@ -9,7 +9,6 @@ import {
   createEntityGraphic,
   drawEnemyHealth,
   drawChest,
-  drawBossHazard,
   drawBossBreakTarget,
   drawPlayerStatus,
   drawShard,
@@ -22,6 +21,7 @@ import {
 } from '../render/pixelArt';
 import {
   generatedArenaTextureKey,
+  getGeneratedBossHazardVisual,
   getGeneratedEnemyProjectileScale,
   getGeneratedEnemyProjectileTexture,
   getGeneratedProjectileTexture,
@@ -62,7 +62,7 @@ export class GameScene extends Phaser.Scene {
   private readonly enemyProjectileSprites = new Map<number, Phaser.GameObjects.Image>();
   private readonly shardGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   private readonly chestGraphics = new Map<number, Phaser.GameObjects.Graphics>();
-  private readonly bossHazardGraphics = new Map<number, Phaser.GameObjects.Graphics>();
+  private readonly bossHazardSprites = new Map<number, Phaser.GameObjects.Image>();
   private playerGraphic!: Phaser.GameObjects.Graphics;
   private playerSprite!: Phaser.GameObjects.Sprite;
   private partnerGraphic!: Phaser.GameObjects.Graphics;
@@ -233,7 +233,7 @@ export class GameScene extends Phaser.Scene {
     this.clearImageMap(this.enemyProjectileSprites);
     this.clearEntityMap(this.shardGraphics);
     this.clearEntityMap(this.chestGraphics);
-    this.clearEntityMap(this.bossHazardGraphics);
+    this.clearImageMap(this.bossHazardSprites);
     this.effects.clear();
     this.simulation = new GameSimulation(createDefaultState());
     this.injectMetaTalents();
@@ -550,10 +550,7 @@ export class GameScene extends Phaser.Scene {
     this.syncMap(this.chestGraphics, this.simulation.state.chests, (graphics, chest) =>
       drawChest(graphics, chest.x, chest.y, Math.sin(this.time.now * 0.006 + chest.id) * 3),
     );
-    this.syncMap(this.bossHazardGraphics, this.simulation.state.bossHazards, (graphics, hazard) => {
-      graphics.setDepth(hazard.telegraphRemainingMs > 0 ? 2 : 8);
-      drawBossHazard(graphics, hazard, this.time.now);
-    });
+    this.syncBossHazardSprites();
   }
 
   private syncMap<T extends { id: number }>(
@@ -699,6 +696,34 @@ export class GameScene extends Phaser.Scene {
         .setRotation(rotation)
         .setScale(getGeneratedEnemyProjectileScale(projectile.kind) + pulse)
         .setAlpha(0.95);
+    }
+  }
+
+  private syncBossHazardSprites(): void {
+    const hazards = this.simulation.state.bossHazards;
+    const liveIds = new Set(hazards.map((hazard) => hazard.id));
+    for (const [id, image] of this.bossHazardSprites) {
+      if (!liveIds.has(id)) {
+        image.destroy();
+        this.bossHazardSprites.delete(id);
+      }
+    }
+    for (const hazard of hazards) {
+      const visual = getGeneratedBossHazardVisual(hazard, this.time.now);
+      let image = this.bossHazardSprites.get(hazard.id);
+      if (!image) {
+        image = this.add.image(visual.x, visual.y, visual.textureKey)
+          .setBlendMode(Phaser.BlendModes.ADD);
+        this.bossHazardSprites.set(hazard.id, image);
+      } else if (image.texture.key !== visual.textureKey) {
+        image.setTexture(visual.textureKey);
+      }
+      image
+        .setDepth(hazard.telegraphRemainingMs > 0 ? 2 : 8)
+        .setPosition(visual.x, visual.y)
+        .setDisplaySize(visual.width, visual.height)
+        .setRotation(visual.rotation)
+        .setAlpha(visual.alpha);
     }
   }
 

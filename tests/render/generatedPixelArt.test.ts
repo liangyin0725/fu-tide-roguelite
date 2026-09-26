@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   GENERATED_ARENA_CELLS,
+  GENERATED_BOSS_EFFECT_CELLS,
   GENERATED_EFFECT_CELLS,
   GENERATED_PIXEL_ASSETS,
   GENERATED_PERSISTENT_EFFECT_CELLS,
   GENERATED_SPRITE_CELLS,
   getGeneratedEnemyProjectileTexture,
+  getGeneratedBossEventTexture,
+  getGeneratedBossHazardTexture,
+  getGeneratedBossHazardVisual,
   getGeneratedEffectOrigin,
   getGeneratedEffectTexture,
   getGeneratedEnemyProjectileScale,
@@ -51,6 +55,81 @@ describe('generated pixel-art asset manifest', () => {
       'golden-shield',
       'awakening-formation',
     ]);
+  });
+
+  it('gives every boss and hazard shape a dedicated generated effect', () => {
+    expect(Object.keys(GENERATED_BOSS_EFFECT_CELLS)).toHaveLength(12);
+    expect(getGeneratedBossHazardTexture('crimson', 'charge')).toBe('generated-boss-crimson-charge');
+    expect(getGeneratedBossHazardTexture('thunder', 'line')).toBe('generated-boss-thunder-line');
+    expect(getGeneratedBossHazardTexture('blood-moon', 'ring')).toBe('generated-boss-blood-moon-ring');
+  });
+
+  it('maps boss combat events to their own generated family', () => {
+    expect(getGeneratedBossEventTexture({
+      type: 'boss-spawned',
+      x: 100,
+      y: 120,
+      wave: 2,
+      bossType: 'crimson',
+    })).toBe('generated-boss-crimson-ring');
+    expect(getGeneratedBossEventTexture({
+      type: 'boss-cast-started',
+      x: 100,
+      y: 120,
+      bossType: 'thunder',
+      kind: 'primary',
+    })).toBe('generated-boss-thunder-charge');
+    expect(getGeneratedBossEventTexture({
+      type: 'boss-phase-changed',
+      x: 100,
+      y: 120,
+      bossId: 7,
+      bossType: 'blood-moon',
+      phase: 2,
+    })).toBe('generated-boss-blood-moon-ring');
+  });
+
+  it('sizes generated boss hazards from their real hit geometry', () => {
+    const baseHazard = {
+      id: 1,
+      ownerBossId: 2,
+      bossType: 'crimson' as const,
+      kind: 'line' as const,
+      x: 100,
+      y: 100,
+      endX: 300,
+      endY: 100,
+      radius: 0,
+      startRadius: 0,
+      endRadius: 0,
+      bandWidth: 0,
+      lineWidth: 24,
+      telegraphRemainingMs: 400,
+      activeRemainingMs: 500,
+      activeDurationMs: 500,
+      damageMultiplier: 1,
+      hasDamagedPlayer: false,
+    };
+    const line = getGeneratedBossHazardVisual(baseHazard, 1000);
+    expect(line).toMatchObject({ x: 200, y: 100, width: 248, height: 58 });
+    expect(line.alpha).toBeLessThan(0.7);
+
+    const ring = getGeneratedBossHazardVisual({
+      ...baseHazard,
+      kind: 'ring',
+      x: 200,
+      y: 180,
+      endX: 200,
+      endY: 180,
+      startRadius: 60,
+      endRadius: 140,
+      bandWidth: 28,
+      telegraphRemainingMs: 0,
+      activeRemainingMs: 250,
+      activeDurationMs: 500,
+    }, 1000);
+    expect(ring).toMatchObject({ x: 200, y: 180, width: 228, height: 228 });
+    expect(ring.alpha).toBeGreaterThan(0.75);
   });
 
   it('keeps enemy projectile silhouettes distinct at combat scale', () => {

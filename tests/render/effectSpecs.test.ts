@@ -14,7 +14,7 @@ describe('createEffectSpecs', () => {
       { type: 'chain-lightning', fromX: 1, fromY: 2, toX: 3, toY: 4 },
       { type: 'fire-burst', x: 50, y: 60, radius: 90 },
       { type: 'level-up', x: 70, y: 80, level: 2 },
-      { type: 'boss-spawned', x: 400, y: 300, wave: 1 },
+      { type: 'boss-spawned', x: 400, y: 300, wave: 1, bossType: 'crimson' },
       { type: 'skill-awakened', x: 400, y: 300, upgrade: 'meteor-seal' },
       { type: 'meteor-strike', x: 500, y: 300, damage: 90 },
       { type: 'dodge', x: 300, y: 300 },
@@ -131,7 +131,7 @@ describe('createEffectSpecs', () => {
   it('holds combat impacts long enough for each hit and kill to read clearly', () => {
     const specs = createEffectSpecs([
       { type: 'projectile-hit', x: 120, y: 220 },
-      { type: 'boss-spawned', x: 120, y: 220, wave: 1 },
+      { type: 'boss-spawned', x: 120, y: 220, wave: 1, bossType: 'crimson' },
       { type: 'boss-cast-started', x: 120, y: 220, bossType: 'crimson', kind: 'primary' },
       { type: 'boss-skill-activated', x: 120, y: 220, bossType: 'crimson', kind: 'circle' },
       { type: 'boss-phase-changed', x: 120, y: 220, bossId: 1, bossType: 'crimson', phase: 2 },

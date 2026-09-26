@@ -1,4 +1,7 @@
 import type {
+  BossHazard,
+  BossHazardKind,
+  BossType,
   CombatEvent,
   EnemyProjectileKind,
   Projectile,
@@ -46,6 +49,12 @@ export const GENERATED_PIXEL_ASSETS = {
     url: '/assets/generated/combat-atlas.png',
     columns: 4,
     rows: 2,
+  },
+  bossVfx: {
+    textureKey: 'generated-atlas-boss-vfx',
+    url: '/assets/generated/boss-vfx-atlas.png',
+    columns: 4,
+    rows: 3,
   },
 } as const satisfies Record<string, GeneratedAtlasAsset>;
 
@@ -99,8 +108,34 @@ export const GENERATED_PERSISTENT_EFFECT_CELLS = {
   'awakening-formation': { atlas: 'combat', column: 3, row: 1, outputSize: 384 },
 } as const satisfies Record<string, GeneratedAtlasCell>;
 
+export const GENERATED_BOSS_EFFECT_CELLS = {
+  'crimson-charge': { atlas: 'bossVfx', column: 0, row: 0, outputSize: 384 },
+  'crimson-circle': { atlas: 'bossVfx', column: 1, row: 0, outputSize: 384 },
+  'crimson-line': { atlas: 'bossVfx', column: 2, row: 0, outputSize: 384 },
+  'crimson-ring': { atlas: 'bossVfx', column: 3, row: 0, outputSize: 384 },
+  'thunder-charge': { atlas: 'bossVfx', column: 0, row: 1, outputSize: 384 },
+  'thunder-circle': { atlas: 'bossVfx', column: 1, row: 1, outputSize: 384 },
+  'thunder-line': { atlas: 'bossVfx', column: 2, row: 1, outputSize: 384 },
+  'thunder-ring': { atlas: 'bossVfx', column: 3, row: 1, outputSize: 384 },
+  'blood-moon-charge': { atlas: 'bossVfx', column: 0, row: 2, outputSize: 384 },
+  'blood-moon-circle': { atlas: 'bossVfx', column: 1, row: 2, outputSize: 384 },
+  'blood-moon-line': { atlas: 'bossVfx', column: 2, row: 2, outputSize: 384 },
+  'blood-moon-ring': { atlas: 'bossVfx', column: 3, row: 2, outputSize: 384 },
+} as const satisfies Record<string, GeneratedAtlasCell>;
+
 export type GeneratedEffectTextureKey = `generated-vfx-${keyof typeof GENERATED_EFFECT_CELLS}`;
+export type GeneratedBossEffectTextureKey = `generated-boss-${keyof typeof GENERATED_BOSS_EFFECT_CELLS}`;
 export type PersistentEffectKey = keyof typeof GENERATED_PERSISTENT_EFFECT_CELLS;
+
+export interface GeneratedBossHazardVisual {
+  textureKey: GeneratedBossEffectTextureKey;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  alpha: number;
+}
 
 export interface PersistentEffectInput {
   thunderRadius: number;
@@ -163,6 +198,76 @@ export function getGeneratedEnemyProjectileScale(kind: EnemyProjectileKind): num
   if (kind === 'soul-orb') return 0.34;
   if (kind === 'fan-seal') return 0.28;
   return 0.22;
+}
+
+export function getGeneratedBossHazardTexture(
+  bossType: BossType,
+  kind: BossHazardKind,
+): GeneratedBossEffectTextureKey {
+  return `generated-boss-${bossType}-${kind}` as GeneratedBossEffectTextureKey;
+}
+
+export function getGeneratedBossEventTexture(
+  event: CombatEvent,
+): GeneratedBossEffectTextureKey | null {
+  switch (event.type) {
+    case 'boss-spawned':
+      return getGeneratedBossHazardTexture(event.bossType, 'ring');
+    case 'boss-cast-started':
+      return getGeneratedBossHazardTexture(event.bossType, event.kind === 'primary' ? 'charge' : 'ring');
+    case 'boss-skill-activated':
+      return getGeneratedBossHazardTexture(event.bossType, event.kind);
+    case 'boss-phase-changed':
+      return getGeneratedBossHazardTexture(event.bossType, 'ring');
+    case 'boss-objective-spawned':
+    case 'boss-objective-resolved':
+    case 'boss-healed':
+      return getGeneratedBossHazardTexture(event.bossType, 'circle');
+    case 'boss-break-spawned':
+    case 'boss-break-resolved':
+      return getGeneratedBossHazardTexture(event.bossType, 'charge');
+    default:
+      return null;
+  }
+}
+
+export function getGeneratedBossHazardVisual(
+  hazard: BossHazard,
+  timeMs: number,
+): GeneratedBossHazardVisual {
+  const telegraph = hazard.telegraphRemainingMs > 0;
+  const alpha = telegraph
+    ? 0.5 + Math.sin(timeMs * 0.012 + hazard.id) * 0.12
+    : 0.86;
+  if (hazard.kind === 'line' || hazard.kind === 'charge') {
+    const dx = hazard.endX - hazard.x;
+    const dy = hazard.endY - hazard.y;
+    return {
+      textureKey: getGeneratedBossHazardTexture(hazard.bossType, hazard.kind),
+      x: hazard.x + dx / 2,
+      y: hazard.y + dy / 2,
+      width: Math.hypot(dx, dy) + 48,
+      height: Math.max(42, hazard.lineWidth * 2 + 10),
+      rotation: Math.atan2(dy, dx),
+      alpha,
+    };
+  }
+  const progress = 1 - hazard.activeRemainingMs / Math.max(1, hazard.activeDurationMs);
+  const activeRingRadius = hazard.startRadius
+    + (hazard.endRadius - hazard.startRadius) * Math.min(1, Math.max(0, progress));
+  const radius = hazard.kind === 'ring'
+    ? (telegraph ? hazard.startRadius : activeRingRadius)
+    : hazard.radius;
+  const size = radius * 2 + (hazard.kind === 'ring' ? hazard.bandWidth : 32);
+  return {
+    textureKey: getGeneratedBossHazardTexture(hazard.bossType, hazard.kind),
+    x: hazard.x,
+    y: hazard.y,
+    width: size,
+    height: size,
+    rotation: (hazard.id % 2 === 0 ? 1 : -1) * timeMs * 0.00032,
+    alpha,
+  };
 }
 
 export function getPersistentEffectVisuals(

@@ -489,7 +489,7 @@ export type CombatEvent =
   | { type: 'shield-blocked'; x: number; y: number; amount: number }
   | { type: 'chain-lightning'; fromX: number; fromY: number; toX: number; toY: number; awakened?: boolean; style?: 'storm-net' | 'solar-ray' }
   | { type: 'fire-burst'; x: number; y: number; radius: number; awakened?: boolean }
-  | { type: 'boss-spawned'; x: number; y: number; wave: number }
+  | { type: 'boss-spawned'; x: number; y: number; wave: number; bossType: BossType }
   | { type: 'boss-objective-spawned'; x: number; y: number; bossType: BossType; objective: BossObjectiveKind; expiresAtMs: number }
   | { type: 'boss-objective-resolved'; x: number; y: number; bossType: BossType; objective: BossObjectiveKind; success: boolean }
   | { type: 'skill-awakened'; x: number; y: number; upgrade: UpgradeId }

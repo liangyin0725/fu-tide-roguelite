@@ -7,7 +7,11 @@ import {
   type EffectSpec,
 } from './effectSpecs';
 import type { GameSettings } from '../settings/gameSettings';
-import { getGeneratedEffectOrigin, getGeneratedEffectTexture } from './generatedPixelArt';
+import {
+  getGeneratedBossEventTexture,
+  getGeneratedEffectOrigin,
+  getGeneratedEffectTexture,
+} from './generatedPixelArt';
 
 interface ActiveEffect {
   graphics: Phaser.GameObjects.Graphics;
@@ -498,15 +502,16 @@ function createGeneratedDecal(
   scene: Phaser.Scene,
   event: CombatEvent,
 ): Phaser.GameObjects.Image | undefined {
-  const texture = getGeneratedEffectTexture(event.type);
+  const texture = getGeneratedEffectTexture(event.type) ?? getGeneratedBossEventTexture(event);
   if (!texture || !scene.textures.exists(texture)) return undefined;
   const point = getGeneratedEffectOrigin(event);
   if (!point) return undefined;
+  const bossEffect = texture.startsWith('generated-boss-');
   const image = scene.add.image(point.x, point.y, texture)
     .setDepth(11)
     .setBlendMode(Phaser.BlendModes.ADD)
-    .setAlpha(0.72)
-    .setScale(0.34);
+    .setAlpha(bossEffect ? 0.88 : 0.72)
+    .setScale(bossEffect ? 0.44 : 0.34);
   if ('angle' in event && typeof event.angle === 'number') image.setRotation(event.angle);
   return image;
 }
@@ -515,10 +520,15 @@ function updateGeneratedDecal(effect: ActiveEffect, progress: number): void {
   if (!effect.decal) return;
   const fade = 1 - progress;
   const pulse = Math.sin(progress * Math.PI);
+  const bossEffect = effect.decal.texture.key.startsWith('generated-boss-');
   effect.decal
-    .setAlpha((0.5 + pulse * 0.38) * fade)
-    .setScale(0.34 + progress * 0.72 + pulse * 0.12)
-    .setRotation(effect.decal.rotation + 0.014);
+    .setAlpha(((bossEffect ? 0.72 : 0.5) + pulse * (bossEffect ? 0.26 : 0.38)) * fade)
+    .setScale(
+      bossEffect
+        ? 0.44 + progress * 1.05 + pulse * 0.18
+        : 0.34 + progress * 0.72 + pulse * 0.12,
+    )
+    .setRotation(effect.decal.rotation + (bossEffect ? 0.009 : 0.014));
 }
 
 function objectiveColor(objective: import('../sim/types').ObjectiveKind): number {

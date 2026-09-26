@@ -926,7 +926,13 @@ export class GameSimulation {
         bossWave: wave,
         bossType: getBossTypeForWave(wave),
       });
-      this.events.push({ type: 'boss-spawned', x: boss.x, y: boss.y, wave });
+      this.events.push({
+        type: 'boss-spawned',
+        x: boss.x,
+        y: boss.y,
+        wave,
+        bossType: boss.bossType ?? 'crimson',
+      });
       this.state.bossSlowdownUntilMs = this.state.elapsedMs + 30000;
       this.state.nextBossAtMs += 300000;
     }

@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
 import {
   GENERATED_ARENA_CELLS,
+  GENERATED_BOSS_EFFECT_CELLS,
   GENERATED_EFFECT_CELLS,
   GENERATED_ENEMY_PROJECTILE_CELLS,
   GENERATED_PIXEL_ASSETS,
@@ -147,6 +148,9 @@ function registerGeneratedPixelTextures(scene: Phaser.Scene): void {
   }
   for (const [effect, cell] of Object.entries(GENERATED_PERSISTENT_EFFECT_CELLS)) {
     createCellTexture(scene, `generated-persistent-${effect}`, cell, false);
+  }
+  for (const [effect, cell] of Object.entries(GENERATED_BOSS_EFFECT_CELLS)) {
+    createCellTexture(scene, `generated-boss-${effect}`, cell, false);
   }
 }
 

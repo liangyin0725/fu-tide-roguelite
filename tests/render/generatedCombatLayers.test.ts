@@ -10,6 +10,7 @@ describe('generated combat replacement layers', () => {
     expect(gameSceneSource).not.toContain('drawOrbitingBlades');
     expect(gameSceneSource).not.toContain('drawAwakenedSkillGlyphs');
     expect(gameSceneSource).not.toContain('drawActiveBarrier');
+    expect(gameSceneSource).not.toContain('drawBossHazard');
   });
 
   it('does not stack procedural event art under generated decals', () => {
