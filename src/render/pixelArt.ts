@@ -1,4 +1,12 @@
 import type Phaser from 'phaser';
+import {
+  GENERATED_ARENA_CELLS,
+  GENERATED_EFFECT_CELLS,
+  GENERATED_PIXEL_ASSETS,
+  GENERATED_SPRITE_CELLS,
+  generatedArenaTextureKey,
+  type GeneratedAtlasCell,
+} from './generatedPixelArt';
 
 export interface PixelPart {
   x: number;
@@ -88,6 +96,7 @@ export const PIXEL_SPRITES = {
 } as const satisfies Record<string, PixelSpriteDefinition>;
 
 export function registerPixelTextures(scene: Phaser.Scene): void {
+  registerGeneratedPixelTextures(scene);
   for (const [key, definition] of Object.entries(PIXEL_SPRITES) as [PixelSpriteKey, PixelSpriteDefinition][]) {
     if (scene.textures.exists(key)) continue;
     const texture = scene.textures.createCanvas(
@@ -111,5 +120,63 @@ export function registerPixelTextures(scene: Phaser.Scene): void {
 }
 
 export function createPixelSprite(scene: Phaser.Scene, key: PixelSpriteKey): Phaser.GameObjects.Sprite {
-  return scene.add.sprite(0, 0, key, 0).setOrigin(0.5).setDepth(5).setScale(2);
+  const generated = scene.textures.exists(key);
+  return scene.add.sprite(0, 0, key, 0).setOrigin(0.5).setDepth(5).setScale(generated ? 1 : 2);
+}
+
+export function preloadGeneratedPixelAssets(scene: Phaser.Scene): void {
+  for (const asset of Object.values(GENERATED_PIXEL_ASSETS)) {
+    if (!scene.textures.exists(asset.textureKey)) scene.load.image(asset.textureKey, asset.url);
+  }
+}
+
+function registerGeneratedPixelTextures(scene: Phaser.Scene): void {
+  for (const [key, cell] of Object.entries(GENERATED_SPRITE_CELLS) as [PixelSpriteKey, GeneratedAtlasCell][]) {
+    createCellTexture(scene, key, cell, true);
+  }
+  for (const [tribulation, cell] of Object.entries(GENERATED_ARENA_CELLS)) {
+    createCellTexture(scene, generatedArenaTextureKey(tribulation as keyof typeof GENERATED_ARENA_CELLS), cell, false);
+  }
+  for (const [effect, cell] of Object.entries(GENERATED_EFFECT_CELLS)) {
+    createCellTexture(scene, `generated-vfx-${effect}`, cell, false);
+  }
+}
+
+function createCellTexture(
+  scene: Phaser.Scene,
+  outputKey: string,
+  cell: GeneratedAtlasCell,
+  animated: boolean,
+): void {
+  if (scene.textures.exists(outputKey)) return;
+  const asset = GENERATED_PIXEL_ASSETS[cell.atlas];
+  if (!scene.textures.exists(asset.textureKey)) return;
+  const source = scene.textures.get(asset.textureKey).getSourceImage() as CanvasImageSource & {
+    width: number;
+    height: number;
+  };
+  const cellWidth = Math.floor(source.width / asset.columns);
+  const cellHeight = Math.floor(source.height / asset.rows);
+  const frameCount = animated ? 2 : 1;
+  const texture = scene.textures.createCanvas(outputKey, cell.outputSize * frameCount, cell.outputSize);
+  if (!texture) return;
+  const context = texture.getContext();
+  context.imageSmoothingEnabled = false;
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const bob = frame === 0 ? 0 : 2;
+    context.drawImage(
+      source,
+      cell.column * cellWidth,
+      cell.row * cellHeight,
+      cellWidth,
+      cellHeight,
+      frame * cell.outputSize,
+      bob,
+      cell.outputSize,
+      cell.outputSize - bob,
+    );
+    texture.add(frame, 0, frame * cell.outputSize, 0, cell.outputSize, cell.outputSize);
+  }
+  texture.refresh();
+  texture.setFilter(1);
 }

@@ -7,10 +7,12 @@ import {
   type EffectSpec,
 } from './effectSpecs';
 import type { GameSettings } from '../settings/gameSettings';
+import { getGeneratedEffectTexture } from './generatedPixelArt';
 
 interface ActiveEffect {
   graphics: Phaser.GameObjects.Graphics;
   label?: Phaser.GameObjects.Text;
+  decal?: Phaser.GameObjects.Image;
   spec: EffectSpec;
   ageMs: number;
 }
@@ -36,6 +38,7 @@ export class EffectRenderer {
         if (removable >= 0) {
           this.effects[removable].graphics.destroy();
           this.effects[removable].label?.destroy();
+          this.effects[removable].decal?.destroy();
           this.effects.splice(removable, 1);
         }
       }
@@ -44,7 +47,8 @@ export class EffectRenderer {
       const label = spec.kind === 'damage-number'
         ? createDamageLabel(this.scene, spec.event)
         : undefined;
-      this.effects.push({ graphics, label, spec, ageMs: 0 });
+      const decal = createGeneratedDecal(this.scene, spec.event);
+      this.effects.push({ graphics, label, decal, spec, ageMs: 0 });
 
       if (!settings.screenShake) {
         continue;
@@ -108,10 +112,12 @@ export class EffectRenderer {
       const effect = this.effects[index];
       effect.ageMs += deltaMs;
       const progress = Math.min(1, effect.ageMs / effect.spec.durationMs);
+      updateGeneratedDecal(effect, progress);
       this.drawEffect(effect, progress);
       if (progress >= 1) {
         effect.graphics.destroy();
         effect.label?.destroy();
+        effect.decal?.destroy();
         this.effects.splice(index, 1);
       }
     }
@@ -121,6 +127,7 @@ export class EffectRenderer {
     for (const effect of this.effects) {
       effect.graphics.destroy();
       effect.label?.destroy();
+      effect.decal?.destroy();
     }
     this.effects.length = 0;
   }
@@ -484,6 +491,41 @@ export class EffectRenderer {
         break;
     }
   }
+}
+
+function createGeneratedDecal(
+  scene: Phaser.Scene,
+  event: CombatEvent,
+): Phaser.GameObjects.Image | undefined {
+  const texture = getGeneratedEffectTexture(event.type);
+  if (!texture || !scene.textures.exists(texture)) return undefined;
+  const point = generatedEffectPoint(event);
+  if (!point) return undefined;
+  const image = scene.add.image(point.x, point.y, texture)
+    .setDepth(11)
+    .setBlendMode(Phaser.BlendModes.ADD)
+    .setAlpha(0.3)
+    .setScale(0.24);
+  if ('angle' in event && typeof event.angle === 'number') image.setRotation(event.angle);
+  return image;
+}
+
+function updateGeneratedDecal(effect: ActiveEffect, progress: number): void {
+  if (!effect.decal) return;
+  const fade = 1 - progress;
+  const pulse = Math.sin(progress * Math.PI);
+  effect.decal
+    .setAlpha((0.18 + pulse * 0.34) * fade)
+    .setScale(0.24 + progress * 0.58 + pulse * 0.08)
+    .setRotation(effect.decal.rotation + 0.008);
+}
+
+function generatedEffectPoint(event: CombatEvent): { x: number; y: number } | null {
+  if ('x' in event && 'y' in event && typeof event.x === 'number' && typeof event.y === 'number') {
+    return { x: event.x, y: event.y };
+  }
+  if (event.type === 'rift-return') return { x: event.toX, y: event.toY };
+  return null;
 }
 
 function objectiveColor(objective: import('../sim/types').ObjectiveKind): number {

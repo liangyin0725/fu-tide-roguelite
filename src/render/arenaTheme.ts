@@ -29,7 +29,7 @@ export function drawArenaTheme(
 ): void {
   const theme = getArenaTheme(tribulation);
   graphics.clear();
-  graphics.fillStyle(theme.background, 1);
+  graphics.fillStyle(theme.background, 0.38);
   graphics.fillRect(0, 0, width, height);
   drawBattlefieldTexture(graphics, width, height, theme);
   graphics.lineStyle(1, theme.grid, 0.72);

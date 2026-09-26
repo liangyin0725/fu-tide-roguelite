@@ -22,9 +22,11 @@ import {
 } from '../render/ShapeFactory';
 import {
   createPixelSprite,
+  preloadGeneratedPixelAssets,
   registerPixelTextures,
   type PixelSpriteKey,
 } from '../render/pixelArt';
+import { generatedArenaTextureKey } from '../render/generatedPixelArt';
 import { EffectRenderer } from '../render/EffectRenderer';
 import { drawArenaTheme } from '../render/arenaTheme';
 import {
@@ -64,6 +66,7 @@ export class GameScene extends Phaser.Scene {
   private playerSprite!: Phaser.GameObjects.Sprite;
   private partnerGraphic!: Phaser.GameObjects.Graphics;
   private partnerSprite!: Phaser.GameObjects.Sprite;
+  private arenaTexture!: Phaser.GameObjects.TileSprite;
   private gridGraphic!: Phaser.GameObjects.Graphics;
   private arenaTribulation: TribulationType = 'calm';
   private thunderGraphic!: Phaser.GameObjects.Graphics;
@@ -84,6 +87,10 @@ export class GameScene extends Phaser.Scene {
     super('game');
   }
 
+  public preload(): void {
+    preloadGeneratedPixelAssets(this);
+  }
+
   public create(): void {
     this.settings = loadGameSettings(window.localStorage);
     document.documentElement.lang = this.settings.language;
@@ -94,6 +101,13 @@ export class GameScene extends Phaser.Scene {
     this.injectMetaTalents();
     this.simulation.state.phase = 'menu';
     registerPixelTextures(this);
+    this.arenaTexture = this.add.tileSprite(
+      0,
+      0,
+      this.simulation.state.arena.width,
+      this.simulation.state.arena.height,
+      generatedArenaTextureKey('calm'),
+    ).setOrigin(0).setDepth(-11).setAlpha(0.9);
     this.gridGraphic = this.add.graphics();
     this.gridGraphic.setDepth(-10);
     this.playerGraphic = createEntityGraphic(this);
@@ -484,6 +498,10 @@ export class GameScene extends Phaser.Scene {
   private drawArena(): void {
     const { width, height } = this.simulation.state.arena;
     this.arenaTribulation = this.simulation.state.tribulation;
+    this.arenaTexture
+      .setTexture(generatedArenaTextureKey(this.arenaTribulation))
+      .setSize(width, height)
+      .setDisplaySize(width, height);
     drawArenaTheme(this.gridGraphic, width, height, this.arenaTribulation);
   }
 
@@ -638,7 +656,7 @@ export class GameScene extends Phaser.Scene {
             ? 0x7dff9c
             : enemy.eliteAffix === 'suppressor' ? 0xc68cff : 0xffffff;
       sprite.setTint(enemy.freezeUntilMs > this.simulation.state.elapsedMs ? 0x9defff : objectiveTint ?? eliteTint);
-      sprite.setScale(enemy.objectiveKind ? 2.8 : enemy.eliteAffix ? 2.3 : 2);
+      sprite.setScale(enemy.kind === 'boss' ? 1.42 : enemy.objectiveKind ? 1.38 : enemy.eliteAffix ? 1.18 : 1);
     }
   }
 
