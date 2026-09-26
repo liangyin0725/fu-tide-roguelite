@@ -54,9 +54,9 @@ describe('generated pixel-art asset manifest', () => {
   });
 
   it('keeps enemy projectile silhouettes distinct at combat scale', () => {
-    expect(getGeneratedEnemyProjectileScale('bolt')).toBe(0.15);
-    expect(getGeneratedEnemyProjectileScale('fan-seal')).toBe(0.18);
-    expect(getGeneratedEnemyProjectileScale('soul-orb')).toBe(0.21);
+    expect(getGeneratedEnemyProjectileScale('bolt')).toBe(0.22);
+    expect(getGeneratedEnemyProjectileScale('fan-seal')).toBe(0.28);
+    expect(getGeneratedEnemyProjectileScale('soul-orb')).toBe(0.34);
     expect(getGeneratedEnemyProjectileScale('bolt')).toBeLessThan(
       getGeneratedEnemyProjectileScale('fan-seal'),
     );
@@ -77,11 +77,11 @@ describe('generated pixel-art asset manifest', () => {
       timeMs: 1000,
     });
 
-    expect(visuals['thunder-ring']).toMatchObject({ visible: true, diameter: 300, alpha: 0.32 });
-    expect(visuals['orbiting-blades']).toMatchObject({ visible: true, diameter: 204 });
-    expect(visuals['golden-shield']).toMatchObject({ visible: true, diameter: 96 });
-    expect(visuals['awakening-formation']).toMatchObject({ visible: true, diameter: 232 });
-    expect(Math.max(...Object.values(visuals).map((visual) => visual.alpha))).toBeLessThanOrEqual(0.4);
+    expect(visuals['thunder-ring']).toMatchObject({ visible: true, diameter: 338, alpha: 0.58 });
+    expect(visuals['orbiting-blades']).toMatchObject({ visible: true, diameter: 252 });
+    expect(visuals['golden-shield']).toMatchObject({ visible: true, diameter: 120 });
+    expect(visuals['awakening-formation']).toMatchObject({ visible: true, diameter: 304 });
+    expect(Math.max(...Object.values(visuals).map((visual) => visual.alpha))).toBeGreaterThan(0.6);
   });
 
   it('provides four arena themes and four readable skill decals', () => {
