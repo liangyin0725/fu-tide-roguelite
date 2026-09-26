@@ -7,7 +7,7 @@ import {
   type EffectSpec,
 } from './effectSpecs';
 import type { GameSettings } from '../settings/gameSettings';
-import { getGeneratedEffectTexture } from './generatedPixelArt';
+import { getGeneratedEffectOrigin, getGeneratedEffectTexture } from './generatedPixelArt';
 
 interface ActiveEffect {
   graphics: Phaser.GameObjects.Graphics;
@@ -499,13 +499,13 @@ function createGeneratedDecal(
 ): Phaser.GameObjects.Image | undefined {
   const texture = getGeneratedEffectTexture(event.type);
   if (!texture || !scene.textures.exists(texture)) return undefined;
-  const point = generatedEffectPoint(event);
+  const point = getGeneratedEffectOrigin(event);
   if (!point) return undefined;
   const image = scene.add.image(point.x, point.y, texture)
     .setDepth(11)
     .setBlendMode(Phaser.BlendModes.ADD)
-    .setAlpha(0.3)
-    .setScale(0.24);
+    .setAlpha(0.72)
+    .setScale(0.34);
   if ('angle' in event && typeof event.angle === 'number') image.setRotation(event.angle);
   return image;
 }
@@ -515,17 +515,9 @@ function updateGeneratedDecal(effect: ActiveEffect, progress: number): void {
   const fade = 1 - progress;
   const pulse = Math.sin(progress * Math.PI);
   effect.decal
-    .setAlpha((0.18 + pulse * 0.34) * fade)
-    .setScale(0.24 + progress * 0.58 + pulse * 0.08)
-    .setRotation(effect.decal.rotation + 0.008);
-}
-
-function generatedEffectPoint(event: CombatEvent): { x: number; y: number } | null {
-  if ('x' in event && 'y' in event && typeof event.x === 'number' && typeof event.y === 'number') {
-    return { x: event.x, y: event.y };
-  }
-  if (event.type === 'rift-return') return { x: event.toX, y: event.toY };
-  return null;
+    .setAlpha((0.5 + pulse * 0.38) * fade)
+    .setScale(0.34 + progress * 0.72 + pulse * 0.12)
+    .setRotation(effect.decal.rotation + 0.014);
 }
 
 function objectiveColor(objective: import('../sim/types').ObjectiveKind): number {

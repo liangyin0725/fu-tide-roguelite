@@ -26,7 +26,10 @@ import {
   registerPixelTextures,
   type PixelSpriteKey,
 } from '../render/pixelArt';
-import { generatedArenaTextureKey } from '../render/generatedPixelArt';
+import {
+  generatedArenaTextureKey,
+  getGeneratedProjectileTexture,
+} from '../render/generatedPixelArt';
 import { EffectRenderer } from '../render/EffectRenderer';
 import { drawArenaTheme } from '../render/arenaTheme';
 import {
@@ -58,6 +61,7 @@ export class GameScene extends Phaser.Scene {
   private readonly enemyGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   private readonly enemySprites = new Map<number, Phaser.GameObjects.Sprite>();
   private readonly projectileGraphics = new Map<number, Phaser.GameObjects.Graphics>();
+  private readonly projectileSprites = new Map<number, Phaser.GameObjects.Image>();
   private readonly enemyProjectileGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   private readonly shardGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   private readonly chestGraphics = new Map<number, Phaser.GameObjects.Graphics>();
@@ -222,6 +226,7 @@ export class GameScene extends Phaser.Scene {
     this.clearEntityMap(this.enemyGraphics);
     this.clearSpriteMap(this.enemySprites);
     this.clearEntityMap(this.projectileGraphics);
+    this.clearImageMap(this.projectileSprites);
     this.clearEntityMap(this.enemyProjectileGraphics);
     this.clearEntityMap(this.shardGraphics);
     this.clearEntityMap(this.chestGraphics);
@@ -568,6 +573,7 @@ export class GameScene extends Phaser.Scene {
     this.syncMap(this.projectileGraphics, this.simulation.state.projectiles, (graphics, projectile) =>
       drawProjectile(graphics, projectile.x, projectile.y, projectile.vx, projectile.vy, projectile.kind),
     );
+    this.syncProjectileSprites();
     this.syncMap(
       this.enemyProjectileGraphics,
       this.simulation.state.enemyProjectiles,
@@ -663,6 +669,40 @@ export class GameScene extends Phaser.Scene {
   private clearSpriteMap(map: Map<number, Phaser.GameObjects.Sprite>): void {
     for (const sprite of map.values()) sprite.destroy();
     map.clear();
+  }
+
+  private clearImageMap(map: Map<number, Phaser.GameObjects.Image>): void {
+    for (const image of map.values()) image.destroy();
+    map.clear();
+  }
+
+  private syncProjectileSprites(): void {
+    const projectiles = this.simulation.state.projectiles;
+    const liveIds = new Set(projectiles.map((projectile) => projectile.id));
+    for (const [id, image] of this.projectileSprites) {
+      if (!liveIds.has(id)) {
+        image.destroy();
+        this.projectileSprites.delete(id);
+      }
+    }
+    for (const projectile of projectiles) {
+      const texture = getGeneratedProjectileTexture(projectile.kind);
+      let image = this.projectileSprites.get(projectile.id);
+      if (!image) {
+        image = this.add.image(projectile.x, projectile.y, texture)
+          .setDepth(8.5)
+          .setBlendMode(Phaser.BlendModes.ADD);
+        this.projectileSprites.set(projectile.id, image);
+      } else if (image.texture.key !== texture) {
+        image.setTexture(texture);
+      }
+      const pulse = Math.sin(this.time.now * 0.018 + projectile.id) * 0.025;
+      image
+        .setPosition(Math.round(projectile.x), Math.round(projectile.y))
+        .setRotation(Math.atan2(projectile.vy, projectile.vx) + Math.PI / 2)
+        .setScale((projectile.kind === 'glyph' ? 0.2 : 0.17) + pulse)
+        .setAlpha(0.88);
+    }
   }
 
   private renderPartner(partner: import('../sim/types').CoopPlayer | null): void {

@@ -169,6 +169,7 @@ describe('createEffectSpecs', () => {
 
   it('gives awakened impact skills a longer window for their second visual layer', () => {
     const specs = createEffectSpecs([
+      { type: 'projectile-fired', x: 10, y: 20, angle: 0 },
       { type: 'meteor-strike', x: 120, y: 220, damage: 80 },
       { type: 'meteor-strike', x: 120, y: 220, damage: 80, awakened: true },
       { type: 'fire-burst', x: 120, y: 220, radius: 90 },
@@ -177,7 +178,7 @@ describe('createEffectSpecs', () => {
       { type: 'chain-lightning', fromX: 10, fromY: 20, toX: 120, toY: 220, awakened: true },
     ]);
 
-    expect(specs.map((spec) => spec.durationMs)).toEqual([620, 820, 520, 700, 180, 300]);
+    expect(specs.map((spec) => spec.durationMs)).toEqual([360, 820, 1050, 720, 900, 320, 480]);
   });
 
   it('reserves every effect tier for critical attack warnings', () => {

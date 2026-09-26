@@ -1,4 +1,4 @@
-import type { CombatEvent, TribulationType } from '../sim/types';
+import type { CombatEvent, Projectile, TribulationType } from '../sim/types';
 import type { PixelSpriteKey } from './pixelArt';
 
 export type GeneratedAtlasKey = keyof typeof GENERATED_PIXEL_ASSETS;
@@ -102,4 +102,22 @@ export function getGeneratedEffectTexture(
     default:
       return null;
   }
+}
+
+export function getGeneratedProjectileTexture(
+  kind: Projectile['kind'],
+): GeneratedEffectTextureKey {
+  if (kind === 'star') return 'generated-vfx-lightning';
+  if (kind === 'glyph') return 'generated-vfx-frost';
+  return 'generated-vfx-sword';
+}
+
+export function getGeneratedEffectOrigin(event: CombatEvent): { x: number; y: number } | null {
+  if ('x' in event && 'y' in event && typeof event.x === 'number' && typeof event.y === 'number') {
+    return { x: event.x, y: event.y };
+  }
+  if (event.type === 'chain-lightning' || event.type === 'rift-return') {
+    return { x: event.toX, y: event.toY };
+  }
+  return null;
 }

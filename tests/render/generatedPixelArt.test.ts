@@ -4,7 +4,9 @@ import {
   GENERATED_EFFECT_CELLS,
   GENERATED_PIXEL_ASSETS,
   GENERATED_SPRITE_CELLS,
+  getGeneratedEffectOrigin,
   getGeneratedEffectTexture,
+  getGeneratedProjectileTexture,
 } from '../../src/render/generatedPixelArt';
 
 describe('generated pixel-art asset manifest', () => {
@@ -39,5 +41,30 @@ describe('generated pixel-art asset manifest', () => {
     expect(getGeneratedEffectTexture('chain-lightning')).toBe('generated-vfx-lightning');
     expect(getGeneratedEffectTexture('frost-domain')).toBe('generated-vfx-frost');
     expect(getGeneratedEffectTexture('level-up')).toBeNull();
+  });
+
+  it('keeps generated textures visible on every persistent player projectile', () => {
+    expect(getGeneratedProjectileTexture(undefined)).toBe('generated-vfx-sword');
+    expect(getGeneratedProjectileTexture('sword')).toBe('generated-vfx-sword');
+    expect(getGeneratedProjectileTexture('star')).toBe('generated-vfx-lightning');
+    expect(getGeneratedProjectileTexture('glyph')).toBe('generated-vfx-frost');
+  });
+
+  it('places line-based generated effects at their impact end instead of dropping them', () => {
+    expect(getGeneratedEffectOrigin({
+      type: 'chain-lightning',
+      fromX: 10,
+      fromY: 20,
+      toX: 90,
+      toY: 120,
+    })).toEqual({ x: 90, y: 120 });
+    expect(getGeneratedEffectOrigin({
+      type: 'rift-return',
+      fromX: 10,
+      fromY: 20,
+      toX: 210,
+      toY: 220,
+      awakened: true,
+    })).toEqual({ x: 210, y: 220 });
   });
 });
