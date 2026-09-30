@@ -129,6 +129,7 @@ export class GameSimulation {
       lastMoveDirection: { ...player.lastMoveDirection },
       equippedSkills: [],
       equippedEnhancements: [],
+      skillPaths: { ...player.skillPaths },
       skillSlotLimit: 4,
       enhancementSlotLimit: 4,
       upgradeChoiceSalt: 0x9e3779b9,

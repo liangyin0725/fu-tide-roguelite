@@ -172,6 +172,7 @@ export function createDefaultState(): GameState {
       lastMoveDirection: { x: 0, y: 0 },
       equippedSkills: [],
       equippedEnhancements: [],
+      skillPaths: {},
       skillSlotLimit: 5,
       enhancementSlotLimit: 6,
       upgradeChoiceSalt: 0,

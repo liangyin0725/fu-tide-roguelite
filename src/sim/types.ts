@@ -1,4 +1,5 @@
 import type { GlyphFormation } from './glyphFormations';
+import type { SkillPathMap } from './skillPaths';
 
 export type GamePhase = 'menu' | 'dongfu' | 'character-choice' | 'coop-character-choice' | 'active-choice' | 'coop-active-choice' | 'beta-loadout' | 'playing' | 'upgrade' | 'treasure' | 'treasure-replace' | 'awakening' | 'tribulation-choice' | 'objective-route' | 'lost';
 
@@ -229,6 +230,7 @@ export interface Player {
   lastMoveDirection: Vector;
   equippedSkills: UpgradeId[];
   equippedEnhancements: UpgradeId[];
+  skillPaths: SkillPathMap;
   skillSlotLimit: number;
   enhancementSlotLimit: number;
   upgradeChoiceSalt: number;
