@@ -1,7 +1,7 @@
 import type { GlyphFormation } from './glyphFormations';
-import type { SkillPathMap } from './skillPaths';
+import type { SkillId, SkillPathKey, SkillPathMap } from './skillPaths';
 
-export type GamePhase = 'menu' | 'dongfu' | 'character-choice' | 'coop-character-choice' | 'active-choice' | 'coop-active-choice' | 'beta-loadout' | 'playing' | 'upgrade' | 'treasure' | 'treasure-replace' | 'awakening' | 'tribulation-choice' | 'objective-route' | 'lost';
+export type GamePhase = 'menu' | 'dongfu' | 'character-choice' | 'coop-character-choice' | 'active-choice' | 'coop-active-choice' | 'beta-loadout' | 'playing' | 'upgrade' | 'skill-path-choice' | 'treasure' | 'treasure-replace' | 'awakening' | 'tribulation-choice' | 'objective-route' | 'lost';
 
 export type UpgradeId =
   | 'faster-swords'
@@ -296,6 +296,8 @@ export interface Enemy {
 }
 
 export interface Projectile {
+  playerId?: 'p1' | 'p2';
+  derived?: boolean;
   id: number;
   targetId: number;
   x: number;
@@ -423,6 +425,11 @@ export interface GameState {
   coopUpgradeQueue: Array<'p1' | 'p2'>;
   nextCoopUpgradePlayerId: 'p1' | 'p2';
   pendingUpgradePlayerId: 'p1' | 'p2';
+  pendingSkillPath: {
+    playerId: 'p1' | 'p2';
+    skill: SkillId;
+    resumePhase: 'playing' | 'upgrade';
+  } | null;
   lastCoopUpgradeChoices: UpgradeChoice[];
   player: Player;
   enemies: Enemy[];
@@ -442,6 +449,7 @@ export interface GameState {
   awakeningGlyphVolleyCount: number;
   betaSkillSelections: UpgradeId[];
   betaSkillLevels: UpgradeLevels;
+  betaSkillPaths: SkillPathMap;
   betaActiveSkill: ActiveSkillId;
   betaActiveSkillLevel: number;
   betaStartElapsedMs: number;
@@ -479,9 +487,12 @@ export interface EnemySpawnOptions {
 }
 
 export type CombatEvent =
+  | { type: 'skill-path-trigger'; skill: SkillId; playerId: 'p1' | 'p2'; targetId: number; x: number; y: number }
+  | { type: 'skill-path-effect'; skill: SkillId; path: SkillPathKey; shape: 'ring' | 'beam' | 'field' | 'orbit'; x: number; y: number; toX?: number; toY?: number; radius: number; durationMs: number; identityKey?: string }
+  | { type: 'thunder-path-wave'; x: number; y: number; radius: number; path: 'a' | 'b'; returning: boolean; durationMs: number }
   | { type: 'projectile-fired'; x: number; y: number; angle: number }
   | { type: 'projectile-hit'; x: number; y: number }
-  | { type: 'damage-dealt'; x: number; y: number; amount: number; source: DamageSource }
+  | { type: 'damage-dealt'; x: number; y: number; amount: number; source: DamageSource; targetId?: number; burst?: boolean }
   | { type: 'enemy-killed'; x: number; y: number }
   | { type: 'player-damaged'; x: number; y: number; amount: number }
   | { type: 'player-healed'; x: number; y: number; amount: number; source: 'life-drain' }
@@ -525,7 +536,7 @@ export type CombatEvent =
   | { type: 'star-pull'; x: number; y: number; radius: number; awakened: boolean }
   | { type: 'ranged-windup'; x: number; y: number; archetype: Exclude<EnemyArchetype, 'melee'> }
   | { type: 'enemy-bullet-fired'; x: number; y: number; archetype: Exclude<EnemyArchetype, 'melee'> }
-  | { type: 'enemy-bullet-broken'; x: number; y: number; by: 'blade' | 'barrier' | 'dash' | 'mirror' }
+  | { type: 'enemy-bullet-broken'; x: number; y: number; by: 'blade' | 'barrier' | 'dash' | 'mirror'; playerId?: 'p1' | 'p2'; bulletId?: number; vx?: number; vy?: number }
   | { type: 'active-skill-cast'; x: number; y: number; skill: ActiveSkillId; angle: number }
   | { type: 'active-skill-leveled'; x: number; y: number; skill: ActiveSkillId; level: number }
   | { type: 'elite-squad-spawned'; x: number; y: number; affix: EliteAffix; squadId: number }

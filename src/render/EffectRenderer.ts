@@ -3,10 +3,13 @@ import type { CombatEvent, UpgradeId } from '../sim/types';
 import {
   createEffectSpecs,
   EFFECT_BUDGETS,
-  isCriticalEffect,
   type EffectSpec,
 } from './effectSpecs';
 import type { GameSettings } from '../settings/gameSettings';
+import { COMBAT_DEPTHS } from './combatDepths';
+import { EFFECT_FRAME_BUDGETS, getEffectImportance, getEffectPriority, selectEffectsForFrame } from './effectPolicy';
+import { canMergeDamage } from './damageMerging';
+import { SKILL_PATH_VISUALS } from './skillPathVisuals';
 import {
   getGeneratedBossEventTexture,
   getGeneratedEffectOrigin,
@@ -25,6 +28,8 @@ export class EffectRenderer {
   private readonly scene: Phaser.Scene;
   private readonly getSettings: () => GameSettings;
   private readonly effects: ActiveEffect[] = [];
+  private readonly identities = new Map<string, ActiveEffect>();
+  private lastShakeAtMs = -Infinity;
 
   public constructor(scene: Phaser.Scene, getSettings: () => GameSettings) {
     this.scene = scene;
@@ -32,82 +37,128 @@ export class EffectRenderer {
   }
 
   public render(events: CombatEvent[]): void {
-    for (const spec of createEffectSpecs(events)) {
+    const strongest = { duration: 0, intensity: 0, bypass: false };
+    const queueShake = (duration: number, intensity: number, bypass = false) => {
+      if (intensity > strongest.intensity) Object.assign(strongest, { duration, intensity, bypass });
+    };
+    const currentSettings = this.getSettings();
+    if (!currentSettings.damageNumbers) {
+      for (let i = this.effects.length - 1; i >= 0; i--) {
+        if (this.effects[i].spec.kind === 'damage-number') this.removeEffect(i);
+      }
+    }
+    const specs = createEffectSpecs(events);
+    for (const spec of specs) {
+      if (!spec.identityKey || spec.durationMs > 0) continue;
+      const existing = this.identities.get(spec.identityKey);
+      if (existing) this.removeEffect(this.effects.indexOf(existing));
+    }
+    for (const spec of selectEffectsForFrame(specs.filter(spec => spec.durationMs > 0), this.getSettings().effectLevel)) {
       const settings = this.getSettings();
       if (spec.kind === 'damage-number' && !settings.damageNumbers) continue;
-      const budget = EFFECT_BUDGETS[settings.effectLevel];
-      if (this.effects.length >= budget) {
-        if (!isCriticalEffect(spec.kind)) continue;
-        const removable = this.effects.findIndex((effect) => !isCriticalEffect(effect.spec.kind));
-        if (removable >= 0) {
-          this.effects[removable].graphics.destroy();
-          this.effects[removable].label?.destroy();
-          this.effects[removable].decal?.destroy();
-          this.effects.splice(removable, 1);
+      const reused = spec.identityKey ? this.identities.get(spec.identityKey) : undefined;
+      if (reused) {
+        reused.spec = spec;
+        reused.ageMs = 0;
+        continue;
+      }
+      if (spec.event.type === 'damage-dealt') {
+        const incoming = spec.event;
+        const existing = this.effects.find((effect) => canMergeDamage(effect.spec.event, incoming, effect.ageMs));
+        if (existing && existing.spec.event.type === 'damage-dealt') {
+          const amount = existing.spec.event.amount + incoming.amount;
+          existing.spec = { ...spec, event: { ...incoming, amount } };
+          existing.ageMs = 0;
+          existing.label?.setText(Math.round(amount).toLocaleString());
+          continue;
+        }
+        const numbers = this.effects.filter((effect) => effect.spec.kind === 'damage-number');
+        if (numbers.length >= EFFECT_FRAME_BUDGETS[settings.effectLevel].damageNumbers) {
+          this.removeEffect(this.effects.indexOf(numbers[0]));
         }
       }
-      const graphics = this.scene.add.graphics().setDepth(12);
+      const budget = EFFECT_BUDGETS[settings.effectLevel];
+      if (this.effects.filter(effect => getEffectPriority(effect.spec.kind) !== 'critical').length >= budget) {
+        const removable = this.effects.findIndex((effect) => getEffectPriority(effect.spec.kind) !== 'critical'
+          && (getEffectPriority(spec.kind) === 'critical'
+            || getEffectPriority(effect.spec.kind) === 'ambient' && getEffectPriority(spec.kind) === 'combat'
+            || getEffectImportance(effect.spec) < getEffectImportance(spec)));
+        if (removable < 0 && getEffectPriority(spec.kind) !== 'critical') continue;
+        if (removable >= 0) {
+          this.removeEffect(removable);
+        }
+      }
+      const depth = getEffectPriority(spec.kind) === 'critical' ? COMBAT_DEPTHS.bossTelegraph : COMBAT_DEPTHS.playerProjectile;
+      const graphics = this.scene.add.graphics().setDepth(depth);
       graphics.setBlendMode(Phaser.BlendModes.ADD);
       const label = spec.kind === 'damage-number'
         ? createDamageLabel(this.scene, spec.event)
         : undefined;
       const decal = createGeneratedDecal(this.scene, spec.event);
-      this.effects.push({ graphics, label, decal, spec, ageMs: 0 });
+      decal?.setDepth(depth);
+      const effect = { graphics, label, decal, spec, ageMs: 0 };
+      this.effects.push(effect);
+      if (spec.identityKey) this.identities.set(spec.identityKey, effect);
 
       if (!settings.screenShake) {
         continue;
       }
       if (spec.kind === 'impact') {
-        this.scene.cameras.main.shake(56, 0.0022);
+        queueShake(56, 0.0022);
       } else if (spec.kind === 'kill') {
-        this.scene.cameras.main.shake(108, 0.0036);
+        queueShake(108, 0.0036);
       } else if (spec.kind === 'damage') {
-        this.scene.cameras.main.shake(90, 0.006);
+        queueShake(90, 0.006);
       } else if (spec.kind === 'siege') {
-        this.scene.cameras.main.shake(150, 0.008);
+        queueShake(150, 0.008);
       } else if (spec.kind === 'fire') {
-        this.scene.cameras.main.shake(120, 0.004);
+        queueShake(120, 0.004);
       } else if (spec.kind === 'level') {
-        this.scene.cameras.main.shake(180, 0.003);
+        queueShake(180, 0.003);
       } else if (spec.kind === 'boss') {
         this.scene.cameras.main.flash(180, 255, 56, 100, false);
-        this.scene.cameras.main.shake(520, 0.014);
+        queueShake(520, 0.014, true);
       } else if (spec.kind === 'awakening') {
         this.scene.cameras.main.flash(260, 246, 211, 101, false);
-        this.scene.cameras.main.shake(420, 0.012);
+        queueShake(420, 0.012, true);
       } else if (spec.kind === 'meteor' || spec.kind === 'shield-break') {
-        this.scene.cameras.main.shake(140, 0.006);
+        queueShake(140, 0.006);
       } else if (spec.kind === 'reward') {
         this.scene.cameras.main.flash(180, 246, 211, 101, false);
       } else if (spec.kind === 'character-unlock') {
         this.scene.cameras.main.flash(360, 255, 79, 163, false);
-        this.scene.cameras.main.shake(420, 0.01);
+        queueShake(420, 0.01);
       } else if (spec.kind === 'boss-phase') {
         this.scene.cameras.main.flash(320, 255, 70, 90, false);
-        this.scene.cameras.main.shake(480, 0.016);
+        queueShake(480, 0.016, true);
       } else if (spec.kind === 'boss-cast') {
-        this.scene.cameras.main.shake(180, 0.006);
+        queueShake(180, 0.006);
       } else if (spec.kind === 'boss-skill') {
-        this.scene.cameras.main.shake(240, 0.011);
+        queueShake(240, 0.011);
       } else if (spec.kind === 'boss-objective') {
-        this.scene.cameras.main.shake(220, 0.009);
+        queueShake(220, 0.009);
       } else if (spec.kind === 'synergy') {
-        this.scene.cameras.main.shake(100, 0.003);
+        queueShake(100, 0.003);
       } else if (spec.kind === 'glyph' && spec.event.type === 'glyph-volley' && spec.event.ritual !== 'bolt') {
-        this.scene.cameras.main.shake(96, 0.003);
+        queueShake(96, 0.003);
       } else if (spec.kind === 'tribulation') {
         this.scene.cameras.main.flash(260, 97, 245, 255, false);
-        this.scene.cameras.main.shake(260, 0.006);
+        queueShake(260, 0.006);
       } else if (spec.kind === 'tribulation-choice') {
-        this.scene.cameras.main.shake(150, 0.004);
+        queueShake(150, 0.004);
       } else if (spec.kind === 'tribulation-seal') {
-        this.scene.cameras.main.shake(spec.event.type === 'tribulation-seal-gained' ? 200 : 110, 0.004);
+        queueShake(spec.event.type === 'tribulation-seal-gained' ? 200 : 110, 0.004);
       } else if (spec.kind === 'objective') {
-        this.scene.cameras.main.shake(140, 0.004);
+        queueShake(140, 0.004);
       } else if (spec.kind === 'objective-field') {
         this.scene.cameras.main.flash(180, 156, 239, 255, false);
-        this.scene.cameras.main.shake(180, 0.005);
+        queueShake(180, 0.005);
       }
+    }
+    const now = this.scene.time.now;
+    if (strongest.intensity > 0 && (strongest.bypass || now - this.lastShakeAtMs >= 80)) {
+      this.scene.cameras.main.shake(strongest.duration, strongest.intensity);
+      this.lastShakeAtMs = now;
     }
   }
 
@@ -119,12 +170,18 @@ export class EffectRenderer {
       updateGeneratedDecal(effect, progress);
       this.drawEffect(effect, progress);
       if (progress >= 1) {
-        effect.graphics.destroy();
-        effect.label?.destroy();
-        effect.decal?.destroy();
-        this.effects.splice(index, 1);
+        this.removeEffect(index);
       }
     }
+  }
+
+  private removeEffect(index: number): void {
+    const effect = this.effects[index];
+    if (effect.spec.identityKey) this.identities.delete(effect.spec.identityKey);
+    effect.graphics.destroy();
+    effect.label?.destroy();
+    effect.decal?.destroy();
+    this.effects.splice(index, 1);
   }
 
   public clear(): void {
@@ -134,6 +191,7 @@ export class EffectRenderer {
       effect.decal?.destroy();
     }
     this.effects.length = 0;
+    this.identities.clear();
   }
 
   private drawEffect(effect: ActiveEffect, progress: number): void {
@@ -152,6 +210,30 @@ export class EffectRenderer {
     }
 
     switch (event.type) {
+      case 'skill-path-effect': {
+        const color = SKILL_PATH_VISUALS[event.skill].color;
+        if (event.shape === 'beam' && event.toX !== undefined && event.toY !== undefined) {
+          graphics.lineStyle(event.path === 'a' ? 6 : 3, color, fade);
+          graphics.lineBetween(event.x, event.y, event.toX, event.toY);
+        } else {
+          drawRing(graphics, event.x, event.y, Math.max(10, event.radius * (event.shape === 'field' ? 1 : progress)), color, fade, event.path === 'a' ? 6 : 3);
+        }
+        break;
+      }
+      case 'thunder-path-wave': {
+        const sweep = event.returning ? 1 - Math.abs(progress * 2 - 1) : progress;
+        const radius = Math.max(12, event.radius * sweep);
+        drawRing(graphics, event.x, event.y, radius, 0x61f5ff, fade, event.path === 'a' ? 8 : 5);
+        drawRing(graphics, event.x, event.y, Math.max(4, radius - 12), 0xc9faff, fade * 0.75, 2);
+        for (let i = 0; i < 12; i++) {
+          const angle = i * Math.PI / 6 + progress;
+          const x = event.x + Math.cos(angle) * radius;
+          const y = event.y + Math.sin(angle) * radius;
+          graphics.fillStyle(0xe8ffff, fade);
+          graphics.fillRect(x - 3, y - 3, 6, 6);
+        }
+        break;
+      }
       case 'projectile-fired':
         drawSwordWake(graphics, event.x, event.y, event.angle, progress, fade);
         break;
@@ -502,6 +584,17 @@ function createGeneratedDecal(
   scene: Phaser.Scene,
   event: CombatEvent,
 ): Phaser.GameObjects.Image | undefined {
+  if (event.type === 'skill-path-effect') {
+    const visual = SKILL_PATH_VISUALS[event.skill];
+    if (!scene.textures.exists(visual.texture)) return undefined;
+    return scene.add.image(event.x, event.y, visual.texture).setDepth(COMBAT_DEPTHS.playerProjectile)
+      .setOrigin(0.5, visual.texture.includes('persistent') ? 0.485 : 0.5)
+      .setTint(visual.color).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.8);
+  }
+  if (event.type === 'thunder-path-wave' && scene.textures.exists('generated-persistent-thunder-ring')) {
+    return scene.add.image(event.x, event.y, 'generated-persistent-thunder-ring')
+      .setOrigin(0.5, 0.485).setDepth(11).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.8);
+  }
   const texture = getGeneratedEffectTexture(event.type) ?? getGeneratedBossEventTexture(event);
   if (!texture || !scene.textures.exists(texture)) return undefined;
   const point = getGeneratedEffectOrigin(event);
@@ -518,6 +611,26 @@ function createGeneratedDecal(
 
 function updateGeneratedDecal(effect: ActiveEffect, progress: number): void {
   if (!effect.decal) return;
+  const event = effect.spec.event;
+  if (event.type === 'skill-path-effect') {
+    const fade = event.shape === 'field' || event.shape === 'orbit' ? Math.min(1, (1 - progress) * 5) : 1 - progress;
+    if (event.shape === 'beam' && event.toX !== undefined && event.toY !== undefined) {
+      effect.decal.setPosition((event.x + event.toX) / 2, (event.y + event.toY) / 2)
+        .setDisplaySize(event.path === 'a' ? 40 : 24, Math.max(20, Math.hypot(event.toX - event.x, event.toY - event.y)))
+        .setRotation(Math.atan2(event.toY - event.y, event.toX - event.x) + Math.PI / 2).setAlpha(fade * 0.85);
+    } else {
+      const size = Math.max(24, event.radius * 2 * (event.shape === 'ring' ? progress : 1));
+      effect.decal.setPosition(event.x, event.y).setDisplaySize(size, size).setRotation(progress * Math.PI * (event.path === 'a' ? 1 : -1)).setAlpha(fade * 0.72);
+    }
+    return;
+  }
+  if (event.type === 'thunder-path-wave') {
+    const sweep = event.returning ? 1 - Math.abs(progress * 2 - 1) : progress;
+    const diameter = Math.max(24, event.radius * 2 * sweep);
+    effect.decal.setDisplaySize(diameter, diameter).setAlpha(0.85 * (1 - progress))
+      .setRotation(progress * Math.PI * (event.path === 'a' ? 0.5 : 1));
+    return;
+  }
   const fade = 1 - progress;
   const pulse = Math.sin(progress * Math.PI);
   const bossEffect = effect.decal.texture.key.startsWith('generated-boss-');

@@ -1,4 +1,4 @@
-import type { DamageSource, Enemy, GameState, RunStats } from './types';
+import type { DamageSource, Enemy, GameState, RunStats, Player } from './types';
 import { getTribulationChoiceModifiers } from './tribulationChoices';
 
 const SOURCES: DamageSource[] = [
@@ -21,8 +21,8 @@ export function createEmptyRunStats(): RunStats {
   };
 }
 
-export function dealPlayerDamage(state: GameState, enemy: Enemy, damage: number, source: DamageSource): number {
-  const bossMultiplier = enemy.kind === 'boss' ? state.player.bossDamageMultiplier : 1;
+export function dealPlayerDamage(state: GameState, enemy: Enemy, damage: number, source: DamageSource, player: Player = state.player): number {
+  const bossMultiplier = enemy.kind === 'boss' ? player.bossDamageMultiplier : 1;
   const protectedByIronWall = state.enemies.some((candidate) => (
     candidate.id !== enemy.id
     && candidate.hp > 0

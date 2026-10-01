@@ -1,6 +1,10 @@
 import type { GameSettings } from '../settings/gameSettings';
+import { SKILL_PATHS } from '../sim/skillPaths';
 
 const EN_TEXT: Record<string, string> = {
+  '周期展开寒霜领域，迟滞近处敌群': 'Periodically create a frost field that slows nearby enemies.',
+  '周期放出往返灵刃，双段切割敌群': 'Periodically release a returning spirit blade that cuts enemies twice.',
+  '周期牵引敌群并在阵心引爆星坠': 'Periodically pull enemies together and detonate a falling star at the center.',
   '符潮残夜': 'Fu Tide: Remnant Night',
   '开始渡劫': 'Begin Tribulation',
   '本地双人': 'Local Co-op',
@@ -29,6 +33,8 @@ const EN_TEXT: Record<string, string> = {
   '屏幕震动': 'Screen Shake',
   '伤害数字': 'Damage Numbers',
   '特效强度': 'Effects',
+  '特效密度': 'Effect Density',
+  '标准': 'Standard',
   '摇杆透明度': 'Joystick Opacity',
   '开启': 'On',
   '关闭': 'Off',
@@ -481,9 +487,20 @@ const EN_TEXT: Record<string, string> = {
   '霜印': 'Frost Seal',
 };
 
+for (const routes of Object.values(SKILL_PATHS)) {
+  for (const route of Object.values(routes)) {
+    EN_TEXT[route.nameZh] = route.nameEn;
+    EN_TEXT[route.coreZh] = route.coreEn;
+    EN_TEXT[route.level4Zh] = route.level4En;
+    EN_TEXT[route.level5Zh] = route.level5En;
+    EN_TEXT[route.awakeningNameZh] = route.awakeningNameEn;
+  }
+}
+
+const EN_REPLACEMENTS = Object.entries(EN_TEXT).sort(([left], [right]) => right.length - left.length);
+
 export function localizeMarkup(markup: string, language: GameSettings['language']): string {
   if (language === 'zh-CN') return markup;
-  return Object.entries(EN_TEXT)
-    .sort(([left], [right]) => right.length - left.length)
+  return EN_REPLACEMENTS
     .reduce((output, [source, translation]) => output.replaceAll(source, translation), markup);
 }

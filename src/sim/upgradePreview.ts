@@ -2,6 +2,7 @@ import type { Player, UpgradeId } from './types';
 import { getEquippedForKind, recalculatePlayerBuild } from './loadout';
 import { getUpgradeKind, getUpgradeMaxLevel, type UpgradeKind } from './upgradeCatalog';
 import { getAwakeningRequirement, isUpgradeAwakened } from './awakening';
+import { getSkillPathDefinition, type SkillId } from './skillPaths';
 
 export interface UpgradePreview {
   kind: UpgradeKind;
@@ -151,6 +152,10 @@ export function createUpgradePreview(player: Player, upgrade: UpgradeId): Upgrad
   next.upgradeLevels[upgrade] = nextLevel;
   recalculatePlayerBuild(next);
 
+  const path = player.skillPaths[upgrade as SkillId];
+  const route = getUpgradeKind(upgrade) === 'skill' && path ? getSkillPathDefinition(upgrade as SkillId, path) : null;
+  const routeLines = route ? [route.nameZh, nextLevel === 4 ? route.level4Zh : nextLevel === 5 ? route.level5Zh : nextLevel === 6 ? route.awakeningNameZh : route.coreZh] : [];
+
   return {
     kind: getUpgradeKind(upgrade),
     currentLevel,
@@ -158,9 +163,9 @@ export function createUpgradePreview(player: Player, upgrade: UpgradeId): Upgrad
     maxLevel,
     awakens: !isUpgradeAwakened(current, upgrade) && isUpgradeAwakened(next, upgrade),
     awakeningRequirement: getAwakeningRequirement(upgrade),
-    lines: METRICS[upgrade]
+    lines: [...METRICS[upgrade]
       .map((metric) => formatMetric(metric, current, next))
-      .filter((line): line is string => line !== null),
+      .filter((line): line is string => line !== null), ...routeLines],
   };
 }
 
@@ -172,6 +177,7 @@ function clonePlayer(player: Player): Player {
     equippedEnhancements: [...player.equippedEnhancements],
     insightLevels: { ...player.insightLevels },
     upgradeLevels: { ...player.upgradeLevels },
+    skillPaths: { ...player.skillPaths },
   };
 }
 

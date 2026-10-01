@@ -43,6 +43,7 @@ describe('new six-level skills', () => {
     ['spirit-sword-rain', 'multi-swords'],
   ] as const)('awakens %s when its resonance is complete', (skill, enhancement) => {
     const state = createDefaultState();
+    state.player.skillPaths[skill] = 'a';
     let result;
     for (let level = 0; level < 6; level += 1) result = applyUpgrade(state, skill);
     expect(result?.awakened).toBe(enhancement === null);

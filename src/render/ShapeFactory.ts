@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { COMBAT_DEPTHS } from './combatDepths';
 import { getBossHazardRadius, getBossHazardTelegraphPattern } from '../sim/bossSkills';
 import { getGlyphFormation, getGlyphFormationPosition } from '../sim/glyphFormations';
 import type { BossHazard, BossType, EnemyProjectile, UpgradeId, UpgradeLevels } from '../sim/types';
@@ -115,7 +116,7 @@ export function drawBossBreakTarget(
   timeMs: number,
 ): void {
   graphics.clear();
-  graphics.setDepth(9);
+  graphics.setDepth(COMBAT_DEPTHS.worldIndicator);
   const pulse = Math.sin(timeMs * 0.012) * 4;
   graphics.fillStyle(0x8d7cff, 0.16);
   graphics.fillCircle(x, y, 42 + pulse);

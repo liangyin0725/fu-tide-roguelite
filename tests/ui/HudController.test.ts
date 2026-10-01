@@ -197,7 +197,7 @@ describe('HudController', () => {
     hud.render(createDefaultState(), DEFAULT_GAME_SETTINGS, true);
 
     expect(root.textContent).toContain('游戏速度');
-    expect(root.textContent).toContain('特效强度');
+    expect(root.textContent).toContain('特效密度');
     expect(root.textContent).toContain('摇杆透明度');
     const speed = root.querySelector<HTMLButtonElement>('[data-setting="gameSpeed"][data-value="1.25"]')!;
     speed.click();
@@ -326,6 +326,7 @@ describe('HudController', () => {
     state.phase = 'beta-loadout';
     state.betaSkillSelections = ['thunder-ring'];
     state.betaSkillLevels['thunder-ring'] = 5;
+    state.betaSkillPaths['thunder-ring'] = 'a';
 
     hud.render(state, DEFAULT_GAME_SETTINGS, false);
     expect(root.querySelectorAll('[data-beta-skill]')).toHaveLength(18);

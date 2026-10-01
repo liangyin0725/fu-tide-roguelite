@@ -8,6 +8,7 @@ describe('six-level skill progression', () => {
   it('increases every skill at levels one through five and awakens only at six', () => {
     for (const skill of SKILL_IDS) {
       const state = createDefaultState();
+      state.player.skillPaths[skill] = 'a';
       const results = Array.from({ length: 7 }, () => applyUpgrade(state, skill));
 
       expect(results.slice(0, 5).every((result) => !result.awakened), skill).toBe(true);
@@ -23,6 +24,7 @@ describe('six-level skill progression', () => {
 
   it('gives representative skills a real level-five increase before awakening', () => {
     const state = createDefaultState();
+    state.player.skillPaths['meteor-seal'] = 'a';
     for (let level = 0; level < 4; level += 1) applyUpgrade(state, 'thunder-ring');
     const levelFourRadius = state.player.thunderRadius;
     applyUpgrade(state, 'thunder-ring');
@@ -38,6 +40,7 @@ describe('six-level skill progression', () => {
 
   it('raises thunder ring damage at every level and gives awakening a decisive jump', () => {
     const state = createDefaultState();
+    state.player.skillPaths['thunder-ring'] = 'a';
     const damages: number[] = [];
 
     for (let level = 0; level < 6; level += 1) {

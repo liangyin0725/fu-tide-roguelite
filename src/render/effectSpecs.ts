@@ -44,12 +44,14 @@ export type EffectKind =
   | 'glyph'
   | 'frost-domain'
   | 'rift-return'
-  | 'star-pull';
+  | 'star-pull'
+  | 'skill-path';
 
 export interface EffectSpec {
   kind: EffectKind;
   durationMs: number;
   event: CombatEvent;
+  identityKey?: string;
 }
 
 export const EFFECT_BUDGETS = { low: 45, medium: 90, high: 160 } as const;
@@ -63,10 +65,14 @@ export function isCriticalEffect(kind: EffectKind): boolean {
 }
 
 export function createEffectSpecs(events: CombatEvent[]): EffectSpec[] {
-  return events.map((event) => {
+  return events.filter(event => event.type !== 'skill-path-trigger').map((event) => {
     switch (event.type) {
       case 'projectile-fired':
         return { kind: 'trail', durationMs: 360, event };
+      case 'thunder-path-wave':
+        return { kind: 'lightning', durationMs: event.durationMs, event };
+      case 'skill-path-effect':
+        return { kind: 'skill-path', durationMs: event.durationMs, event, identityKey: event.identityKey };
       case 'projectile-hit':
         return { kind: 'impact', durationMs: 440, event };
       case 'damage-dealt':

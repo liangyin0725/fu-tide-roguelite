@@ -29,6 +29,8 @@ import {
   type PersistentEffectKey,
 } from '../render/generatedPixelArt';
 import { EffectRenderer } from '../render/EffectRenderer';
+import { COMBAT_DEPTHS } from '../render/combatDepths';
+import { getThreatIndicators } from '../render/threatIndicators';
 import { drawArenaTheme } from '../render/arenaTheme';
 import {
   loadGameSettings,
@@ -37,7 +39,9 @@ import {
   type GameSettings,
 } from '../settings/gameSettings';
 import { GameAudio } from '../audio/GameAudio';
-import { isBetaModePassphrase } from '../testing/betaMode';
+import { canLaunchBetaLoadout, isBetaModePassphrase } from '../testing/betaMode';
+import type { SkillId } from '../sim/skillPaths';
+import { recalculatePlayerBuild } from '../sim/loadout';
 import { getBossWaveBeforeElapsed } from '../sim/spawnPacing';
 import { getAwakenedSkills } from '../sim/awakening';
 import {
@@ -63,6 +67,8 @@ export class GameScene extends Phaser.Scene {
   private readonly shardGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   private readonly chestGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   private readonly bossHazardSprites = new Map<number, Phaser.GameObjects.Image>();
+  private threatGraphic!: Phaser.GameObjects.Graphics;
+  private readonly threatLabels = new Map<string, Phaser.GameObjects.Text>();
   private playerGraphic!: Phaser.GameObjects.Graphics;
   private playerSprite!: Phaser.GameObjects.Sprite;
   private partnerGraphic!: Phaser.GameObjects.Graphics;
@@ -109,9 +115,10 @@ export class GameScene extends Phaser.Scene {
     this.gridGraphic = this.add.graphics();
     this.gridGraphic.setDepth(-10);
     this.playerGraphic = createEntityGraphic(this);
-    this.playerSprite = createPixelSprite(this, 'player');
+    this.playerSprite = createPixelSprite(this, 'player').setDepth(COMBAT_DEPTHS.player);
     this.partnerGraphic = createEntityGraphic(this);
-    this.partnerSprite = createPixelSprite(this, 'player');
+    this.partnerSprite = createPixelSprite(this, 'player').setDepth(COMBAT_DEPTHS.player);
+    this.threatGraphic = this.add.graphics().setDepth(COMBAT_DEPTHS.worldIndicator);
     this.partnerGraphic.setVisible(false);
     this.partnerSprite.setVisible(false);
     for (const [key, depth] of [
@@ -163,6 +170,10 @@ export class GameScene extends Phaser.Scene {
       onChooseActiveSkill: (skill) => this.simulation.chooseActiveSkill(skill),
       onRestart: () => this.restartRun(),
       onChooseUpgrade: (upgrade) => this.simulation.chooseUpgrade(upgrade),
+      onChooseSkillPath: (path) => this.simulation.chooseSkillPath(path),
+      onSetBetaSkillPath: (skill, path) => {
+        if (this.simulation.state.phase === 'beta-loadout') this.simulation.state.betaSkillPaths[skill] = path;
+      },
       onChooseTreasure: (upgrade) => this.simulation.chooseTreasure(upgrade),
       onConfirmTreasureReplacement: (slotIndex) => this.simulation.confirmTreasureReplacement(slotIndex),
       onCancelTreasureReplacement: () => this.simulation.cancelTreasureReplacement(),
@@ -216,6 +227,7 @@ export class GameScene extends Phaser.Scene {
     this.audio.playEvents(events);
     this.centerCoopCamera();
     this.renderWorld();
+    this.renderThreatIndicators();
     this.effects.update(Math.min(delta, 50));
     this.hud.render(
       this.simulation.state,
@@ -246,7 +258,10 @@ export class GameScene extends Phaser.Scene {
     this.restartRun();
     const skills = ['thunder-ring', 'chain-lightning', 'fire-burst', 'meteor-seal', 'north-star'] as const;
     this.simulation.state.betaSkillSelections = [...skills];
-    for (const skill of skills) this.simulation.state.betaSkillLevels[skill] = 5;
+    for (const skill of skills) {
+      this.simulation.state.betaSkillLevels[skill] = 5;
+      this.simulation.state.betaSkillPaths[skill] = 'a';
+    }
     this.simulation.state.phase = 'beta-loadout';
   }
 
@@ -256,9 +271,11 @@ export class GameScene extends Phaser.Scene {
     if (state.betaSkillSelections.includes(skill)) {
       state.betaSkillSelections = state.betaSkillSelections.filter((selected) => selected !== skill);
       state.betaSkillLevels[skill] = 0;
+      delete state.betaSkillPaths[skill as SkillId];
     } else if (state.betaSkillSelections.length < 5) {
       state.betaSkillSelections.push(skill);
       state.betaSkillLevels[skill] = 5;
+      state.betaSkillPaths[skill as SkillId] = 'a';
     }
   }
 
@@ -266,6 +283,8 @@ export class GameScene extends Phaser.Scene {
     const state = this.simulation.state;
     if (state.phase !== 'beta-loadout' || !state.betaSkillSelections.includes(skill)) return;
     state.betaSkillLevels[skill] = Math.max(1, Math.min(6, Math.round(level)));
+    if (state.betaSkillLevels[skill] >= 3) state.betaSkillPaths[skill as SkillId] ??= 'a';
+    else delete state.betaSkillPaths[skill as SkillId];
   }
 
   private setBetaActiveSkill(skill: ActiveSkillId): void {
@@ -287,7 +306,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private launchBetaMode(): void {
+    if (!canLaunchBetaLoadout(this.simulation.state)) return;
     const selected = [...this.simulation.state.betaSkillSelections];
+    const paths = { ...this.simulation.state.betaSkillPaths };
     const levels = { ...this.simulation.state.betaSkillLevels };
     const activeSkill = this.simulation.state.betaActiveSkill;
     const activeSkillLevel = this.simulation.state.betaActiveSkillLevel;
@@ -303,6 +324,8 @@ export class GameScene extends Phaser.Scene {
       }
     }
     this.simulation.chooseActiveSkill(activeSkill);
+    this.simulation.state.player.skillPaths = paths;
+    recalculatePlayerBuild(this.simulation.state.player);
     this.simulation.state.player.activeSkillLevel = activeSkillLevel;
     this.simulation.state.player.level = 18;
     this.simulation.state.elapsedMs = startElapsedMs;
@@ -363,7 +386,12 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const preview = new URLSearchParams(window.location.search).get('preview');
-    if (preview === 'upgrade') {
+    if (preview === 'skill-path') {
+      this.simulation.state.player.upgradeLevels['thunder-ring'] = 3;
+      this.simulation.state.player.equippedSkills = ['thunder-ring'];
+      this.simulation.state.pendingSkillPath = { playerId: 'p1', skill: 'thunder-ring', resumePhase: 'playing' };
+      this.simulation.state.phase = 'skill-path-choice';
+    } else if (preview === 'upgrade') {
       this.simulation.state.player.level = 4;
       this.simulation.state.player.upgradeLevels['faster-swords'] = 3;
       this.simulation.state.upgradeChoices = ['faster-swords', 'frost-seal', 'orbiting-blades'];
@@ -553,6 +581,38 @@ export class GameScene extends Phaser.Scene {
     this.syncBossHazardSprites();
   }
 
+  private renderThreatIndicators(): void {
+    const camera = this.cameras.main;
+    const state = this.simulation.state;
+    const indicators = ['playing', 'awakening'].includes(state.phase) ? getThreatIndicators(state, {
+      x: camera.scrollX, y: camera.scrollY, width: camera.width / camera.zoom, height: camera.height / camera.zoom,
+    }, 45 / camera.zoom) : [];
+    const live = new Set(indicators.map((indicator) => indicator.id));
+    this.threatGraphic.clear();
+    for (const [id, label] of this.threatLabels) {
+      if (!live.has(id)) { label.destroy(); this.threatLabels.delete(id); }
+    }
+    for (const indicator of indicators) {
+      const color = indicator.kind === 'boss' ? 0xff546d : indicator.kind === 'objective' ? 0xffdc68 : 0xff9350;
+      const size = 9 / camera.zoom;
+      const dx = Math.cos(indicator.angle), dy = Math.sin(indicator.angle);
+      this.threatGraphic.fillStyle(color, 1).fillTriangle(
+        indicator.x + dx * size, indicator.y + dy * size,
+        indicator.x - dx * size - dy * size * 0.7, indicator.y - dy * size + dx * size * 0.7,
+        indicator.x - dx * size + dy * size * 0.7, indicator.y - dy * size - dx * size * 0.7,
+      );
+      let label = this.threatLabels.get(indicator.id);
+      if (!label) {
+        label = this.add.text(0, 0, '', { fontFamily: 'monospace', fontSize: '11px', stroke: '#10131c', strokeThickness: 3 })
+          .setOrigin(0.5).setDepth(COMBAT_DEPTHS.worldIndicator);
+        this.threatLabels.set(indicator.id, label);
+      }
+      label.setText(`${indicator.kind === 'boss' ? 'B' : indicator.kind === 'objective' ? '!' : '!'} ${Math.ceil(indicator.distance)}`)
+        .setColor(`#${color.toString(16).padStart(6, '0')}`).setScale(1 / camera.zoom)
+        .setPosition(indicator.x - dx * 24 / camera.zoom, indicator.y - dy * 24 / camera.zoom);
+    }
+  }
+
   private syncMap<T extends { id: number }>(
     map: Map<number, Phaser.GameObjects.Graphics>,
     entities: T[],
@@ -602,7 +662,7 @@ export class GameScene extends Phaser.Scene {
         : enemy.archetype;
       let sprite = this.enemySprites.get(enemy.id);
       if (!sprite) {
-        sprite = createPixelSprite(this, key);
+        sprite = createPixelSprite(this, key).setDepth(COMBAT_DEPTHS.enemy);
         this.enemySprites.set(enemy.id, sprite);
       } else if (sprite.texture.key !== key) {
         sprite.setTexture(key);
@@ -681,7 +741,7 @@ export class GameScene extends Phaser.Scene {
       let image = this.enemyProjectileSprites.get(projectile.id);
       if (!image) {
         image = this.add.image(projectile.x, projectile.y, texture)
-          .setDepth(9.5)
+          .setDepth(COMBAT_DEPTHS.enemyProjectile)
           .setBlendMode(Phaser.BlendModes.ADD);
         this.enemyProjectileSprites.set(projectile.id, image);
       } else if (image.texture.key !== texture) {
@@ -719,7 +779,7 @@ export class GameScene extends Phaser.Scene {
         image.setTexture(visual.textureKey);
       }
       image
-        .setDepth(hazard.telegraphRemainingMs > 0 ? 2 : 8)
+        .setDepth(COMBAT_DEPTHS.bossTelegraph)
         .setPosition(visual.x, visual.y)
         .setDisplaySize(visual.width, visual.height)
         .setRotation(visual.rotation)

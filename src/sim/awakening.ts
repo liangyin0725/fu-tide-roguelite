@@ -1,5 +1,6 @@
 import { getUpgradeKind } from './upgradeCatalog';
 import type { Player, UpgradeId } from './types';
+import { hasSkillPath, type SkillId } from './skillPaths';
 
 export const AWAKENING_REQUIREMENTS: Partial<Record<UpgradeId, UpgradeId>> = {
   'meteor-seal': 'boss-slayer',
@@ -15,7 +16,7 @@ export function getAwakeningRequirement(upgrade: UpgradeId): UpgradeId | null {
 export function isUpgradeAwakened(player: Player, upgrade: UpgradeId): boolean {
   const level = player.upgradeLevels[upgrade];
   if (getUpgradeKind(upgrade) === 'enhancement') return level >= 4;
-  if (level < 6) return false;
+  if (level < 6 || !hasSkillPath(player, upgrade as SkillId)) return false;
   const requirement = getAwakeningRequirement(upgrade);
   return requirement === null || (
     player.upgradeLevels[requirement] > 0

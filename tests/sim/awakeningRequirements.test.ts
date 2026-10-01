@@ -8,6 +8,7 @@ describe('resonant awakenings', () => {
   it('keeps meteor seal at its level-five form until its matching enhancement is equipped', () => {
     const state = createDefaultState();
     let result;
+    state.player.skillPaths['meteor-seal'] = 'a';
 
     for (let level = 0; level < 6; level += 1) result = applyUpgrade(state, 'meteor-seal');
 
@@ -27,6 +28,7 @@ describe('resonant awakenings', () => {
     ['solar-ray', 'faster-swords'],
   ] as const)('requires %s to pair with %s before it awakens', (skill, enhancement) => {
     const state = createDefaultState();
+    state.player.skillPaths[skill] = 'a';
     for (let level = 0; level < 6; level += 1) applyUpgrade(state, skill);
 
     expect(isUpgradeAwakened(state.player, skill)).toBe(false);
@@ -36,6 +38,7 @@ describe('resonant awakenings', () => {
 
   it('plays the deferred awakening when a treasure supplies the matching enhancement', () => {
     const state = createDefaultState();
+    state.player.skillPaths['meteor-seal'] = 'a';
     for (let level = 0; level < 6; level += 1) applyUpgrade(state, 'meteor-seal');
     state.phase = 'treasure';
     state.treasureChoices = ['boss-slayer'];

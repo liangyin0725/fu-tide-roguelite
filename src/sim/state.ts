@@ -62,6 +62,7 @@ export function createDefaultState(): GameState {
     coopUpgradeQueue: [],
     nextCoopUpgradePlayerId: 'p1',
     pendingUpgradePlayerId: 'p1',
+    pendingSkillPath: null,
     lastCoopUpgradeChoices: [],
     player: {
       characterId: null,
@@ -205,6 +206,7 @@ export function createDefaultState(): GameState {
     awakeningGlyphVolleyCount: 0,
     betaSkillSelections: [],
     betaSkillLevels: createEmptyUpgradeLevels(),
+    betaSkillPaths: {},
     betaActiveSkill: 'talisman-ruin',
     betaActiveSkillLevel: 4,
     betaStartElapsedMs: 0,

@@ -14,6 +14,7 @@ describe('same-category treasure replacement', () => {
     const originalEnhancements = [...state.player.equippedEnhancements];
     const replacement = SKILL_IDS[5];
     const removed = state.player.equippedSkills[1];
+    state.player.skillPaths['chain-lightning'] = 'b';
     state.phase = 'treasure';
     state.treasureChoices = [replacement];
     const sim = new GameSimulation(state);
@@ -26,6 +27,7 @@ describe('same-category treasure replacement', () => {
     expect(state.player.equippedEnhancements).toEqual(originalEnhancements);
     expect(state.player.upgradeLevels[removed]).toBe(0);
     expect(state.player.upgradeLevels[replacement]).toBe(1);
+    expect(state.player.skillPaths['chain-lightning']).toBeUndefined();
   });
 
   it('replaces only an enhancement slot when that row is full', () => {

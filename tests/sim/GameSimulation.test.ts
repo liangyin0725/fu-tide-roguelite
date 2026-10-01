@@ -247,6 +247,9 @@ describe('GameSimulation', () => {
   it('applies distinct awakening attributes at each category cap', () => {
     const awaken = (upgrade: (typeof UPGRADE_IDS)[number]) => {
       const state = createDefaultState();
+      if (SKILL_IDS.includes(upgrade as (typeof SKILL_IDS)[number])) {
+        state.player.skillPaths[upgrade as (typeof SKILL_IDS)[number]] = 'a';
+      }
       const requirement = getAwakeningRequirement(upgrade);
       if (requirement) applyUpgrade(state, requirement);
       for (let level = 0; level < getUpgradeMaxLevel(upgrade); level += 1) {
@@ -271,6 +274,9 @@ describe('GameSimulation', () => {
   it('awakens every ability at its category level cap', () => {
     for (const upgrade of UPGRADE_IDS) {
       const state = createDefaultState();
+      if (SKILL_IDS.includes(upgrade as (typeof SKILL_IDS)[number])) {
+        state.player.skillPaths[upgrade as (typeof SKILL_IDS)[number]] = 'a';
+      }
       const requirement = getAwakeningRequirement(upgrade);
       if (requirement) applyUpgrade(state, requirement);
       let result;
@@ -297,6 +303,7 @@ describe('GameSimulation', () => {
 
   it('keeps north-star in its awakened double-volley form on every later cast', () => {
     const state = createDefaultState();
+    state.player.skillPaths['north-star'] = 'a';
     for (let level = 0; level < 6; level += 1) applyUpgrade(state, 'north-star');
     state.player.attackCooldownMs = 99_999;
     const sim = new GameSimulation(state);
@@ -391,6 +398,7 @@ describe('GameSimulation', () => {
 
   it('lets each awakened glyph fire a reinforced bolt every 0.9 seconds', () => {
     const state = createDefaultState();
+    state.player.skillPaths = { 'thunder-ring': 'a', 'fire-burst': 'a' };
     state.player.attackCooldownMs = 99_999;
     state.player.equippedSkills = ['thunder-ring', 'fire-burst'];
     state.player.upgradeLevels['thunder-ring'] = 6;
@@ -428,6 +436,7 @@ describe('GameSimulation', () => {
 
   it('turns every second awakened glyph volley into a control ritual', () => {
     const state = createDefaultState();
+    state.player.skillPaths['frost-seal'] = 'a';
     state.player.attackCooldownMs = 99_999;
     state.player.equippedSkills = ['frost-seal'];
     state.player.upgradeLevels['frost-seal'] = 6;
@@ -445,6 +454,7 @@ describe('GameSimulation', () => {
 
   it('uses the frostbind formation to bind nearby enemies on a glyph ritual', () => {
     const state = createDefaultState();
+    state.player.skillPaths = { 'frost-seal': 'a', 'soul-pin': 'a' };
     state.player.attackCooldownMs = 99_999;
     state.player.equippedSkills = ['frost-seal', 'soul-pin'];
     state.player.upgradeLevels['frost-seal'] = 6;
@@ -1030,6 +1040,7 @@ describe('GameSimulation', () => {
 
   it('can awaken a level-five skill from a boss treasure', () => {
     const state = createDefaultState();
+    state.player.skillPaths['meteor-seal'] = 'a';
     applyUpgrade(state, 'boss-slayer');
     state.player.experienceToNext = 1_000_000;
     for (const upgrade of UPGRADE_IDS) state.player.upgradeLevels[upgrade] = getUpgradeMaxLevel(upgrade);
@@ -1093,6 +1104,7 @@ describe('GameSimulation', () => {
 
   it('converts treasure to vitality when all skills are maxed', () => {
     const state = createDefaultState();
+    for (const skill of SKILL_IDS) state.player.skillPaths[skill] = 'a';
     state.player.experienceToNext = 1_000_000;
     for (const upgrade of UPGRADE_IDS) state.player.upgradeLevels[upgrade] = getUpgradeMaxLevel(upgrade);
     state.player.equippedSkills = [...SKILL_IDS.slice(0, 5)];

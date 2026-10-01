@@ -323,7 +323,7 @@ export function getSkillPathDefinition(skill: SkillId, key: SkillPathKey): Skill
 
 export function hasSkillPath(player: Player, skill: SkillId, key?: SkillPathKey): boolean {
   const selected = player.skillPaths[skill];
-  return key === undefined ? selected !== undefined : selected === key;
+  return (selected === 'a' || selected === 'b') && (key === undefined || selected === key);
 }
 
 export function needsSkillPath(player: Player, skill: SkillId): boolean {

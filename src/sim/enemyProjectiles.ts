@@ -90,7 +90,8 @@ export function updateEnemyProjectiles(
     const breakCause = getBreakCause(state, bullet);
     if (breakCause) {
       state.runStats.bulletsBlocked += 1;
-      events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: breakCause });
+      events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: breakCause,
+        playerId: 'p1', bulletId: bullet.id, vx: bullet.vx, vy: bullet.vy });
       triggerReprisal(state, bullet.x, bullet.y, events);
       if (breakCause === 'mirror') {
         reflectProjectile(state, bullet, takeId);

@@ -16,6 +16,7 @@ describe('upgrade preview', () => {
 
   it('shows sixth-level awakening changes for multi-stat skills', () => {
     const state = createDefaultState();
+    state.player.skillPaths['meteor-seal'] = 'a';
     applyUpgrade(state, 'boss-slayer');
     for (let level = 0; level < 5; level += 1) applyUpgrade(state, 'meteor-seal');
 

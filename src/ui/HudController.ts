@@ -24,6 +24,9 @@ import { CHARACTERS, CHARACTER_IDS, STARTING_CHARACTER_IDS } from '../sim/charac
 import { DAMAGE_SOURCE_NAMES } from '../sim/combatStats';
 import { createDefaultMetaProgression, PATH_NODES, RELIC_FORGE_COSTS, RELICS, TALENTS } from '../meta/metaProgression';
 import { localizeMarkup } from '../i18n/uiText';
+import { getSkillPathDefinition, type SkillId, type SkillPathKey } from '../sim/skillPaths';
+import { canLaunchBetaLoadout } from '../testing/betaMode';
+import { isUpgradeAwakened } from '../sim/awakening';
 
 const OBJECTIVE_NAMES: Record<ObjectiveKind, string> = {
   'thunder-pillar': '破坏引雷天柱',
@@ -61,6 +64,8 @@ interface HudCallbacks {
   onChooseActiveSkill: (skill: ActiveSkillId) => void;
   onRestart: () => void;
   onChooseUpgrade: (upgrade: UpgradeChoice) => void;
+  onChooseSkillPath?: (path: SkillPathKey) => void;
+  onSetBetaSkillPath?: (skill: SkillId, path: SkillPathKey) => void;
   onChooseTreasure: (upgrade: UpgradeId) => void;
   onConfirmTreasureReplacement: (slotIndex: number) => void;
   onCancelTreasureReplacement: () => void;
@@ -109,7 +114,7 @@ export class HudController {
     showCoopBuilds = false,
   ): void {
     this.settings = settings;
-    const showCombatHud = !['menu', 'dongfu', 'beta-loadout', 'lost'].includes(state.phase);
+    const showCombatHud = !['menu', 'dongfu', 'beta-loadout', 'skill-path-choice', 'lost'].includes(state.phase);
     const showLoadout = showCombatHud && !['character-choice', 'tribulation-choice', 'objective-route'].includes(state.phase);
     const markup = localizeMarkup([
       showCombatHud ? this.renderTopBar(state) : '',
@@ -182,11 +187,14 @@ export class HudController {
   ): string {
     return Array.from({ length: count }, (_, index) => {
       const upgrade = equipped[index];
-      if (!upgrade) return `<div class="passive-slot ${className} empty"><i>空</i></div>`;
+      if (!upgrade) return `<div class="passive-slot ${className} empty" title="空" aria-label="空"><i aria-hidden="true">-</i></div>`;
       const label = UPGRADE_LABELS[upgrade];
       const level = player.upgradeLevels[upgrade];
-      const awakened = level === getUpgradeMaxLevel(upgrade);
-      return `<div class="passive-slot ${className}${awakened ? ' awakened' : ''}" title="${label.name}">
+      const awakened = isUpgradeAwakened(player, upgrade);
+      const path = player.skillPaths[upgrade as SkillId];
+      const route = getUpgradeKind(upgrade) === 'skill' && path ? getSkillPathDefinition(upgrade as SkillId, path) : null;
+      const title = route ? `${label.name} · ${route.nameZh} · ${route.coreZh}` : label.name;
+      return `<div class="passive-slot ${className}${awakened ? ' awakened' : ''}" title="${title}">
         <i>${label.symbol}</i><span>${awakened ? '觉' : `Lv.${level}`}</span>
       </div>`;
     }).join('');
@@ -201,7 +209,7 @@ export class HudController {
       <label class="settings-row slider-row"><span>音效音量 <b>${Math.round(settings.soundVolume * 100)}%</b></span><input type="range" min="0" max="1" step="0.05" value="${settings.soundVolume}" data-setting-input="soundVolume"></label>
       ${segmentedSetting('屏幕震动', 'screenShake', [['true', '开启'], ['false', '关闭']], String(settings.screenShake))}
       ${segmentedSetting('伤害数字', 'damageNumbers', [['true', '开启'], ['false', '关闭']], String(settings.damageNumbers))}
-      ${segmentedSetting('特效强度', 'effectLevel', [['low', '低'], ['medium', '中'], ['high', '高']], settings.effectLevel)}
+      ${segmentedSetting('特效密度', 'effectLevel', [['low', '低'], ['medium', '标准'], ['high', '高']], settings.effectLevel)}
       ${segmentedSetting('摇杆透明度', 'joystickOpacity', [['low', '低'], ['medium', '中'], ['high', '高']], settings.joystickOpacity)}
       ${settings.betaModeUnlocked
         ? '<div class="settings-row beta-unlocked"><span>内测模式</span><b>已解锁</b></div>'
@@ -314,6 +322,25 @@ export class HudController {
   }
 
   private renderOverlay(state: GameState, progression: MetaProgression): string {
+    if (state.phase === 'skill-path-choice' && state.pendingSkillPath) {
+      const pending = state.pendingSkillPath;
+      const english = this.settings.language === 'en';
+      const label = UPGRADE_LABELS[pending.skill];
+      return `<div class="center-panel compact skill-path-panel">
+        <p class="eyebrow">${pending.playerId.toUpperCase()} · Lv.3 · ${label.name}</p>
+        <h2>${english ? 'Choose Your Path' : '道途分化'}</h2>
+        <div class="skill-path-grid">${(['a', 'b'] as const).map((key) => {
+          const route = getSkillPathDefinition(pending.skill, key);
+          return `<button class="upgrade" data-skill-path="${key}">
+            <strong>${english ? route.nameEn : route.nameZh}</strong>
+            <span>${english ? route.coreEn : route.coreZh}</span>
+            <small>Lv.4 · ${english ? route.level4En : route.level4Zh}</small>
+            <small>Lv.5 · ${english ? route.level5En : route.level5Zh}</small>
+            <small>Lv.6 · ${english ? route.awakeningNameEn : route.awakeningNameZh}</small>
+          </button>`;
+        }).join('')}</div>
+      </div>`;
+    }
     if (state.phase === 'menu') {
       return `
         <div class="center-panel">
@@ -457,10 +484,14 @@ export class HudController {
               <span class="upgrade-description">${label.description}</span>
             </button>
             ${isSelected ? `<label class="beta-level"><span>等级 Lv.${level}</span><input type="range" min="1" max="6" step="1" value="${level}" data-beta-level="${skill}"></label>` : ''}
+            ${isSelected && level >= 3 ? `<div class="segmented beta-route-options">${(['a', 'b'] as const).map((path) => {
+              const route = getSkillPathDefinition(skill, path);
+              return `<button class="${state.betaSkillPaths[skill] === path ? 'selected' : ''}" data-beta-path="${skill}" data-path="${path}">${this.settings.language === 'en' ? route.nameEn : route.nameZh}</button>`;
+            }).join('')}</div>` : ''}
           </section>`;
         }).join('')}</div>
         <footer class="beta-actions">
-          <button data-action="launch-beta-mode" ${selected.length === 0 ? 'disabled' : ''}>开始内测</button>
+          <button data-action="launch-beta-mode" ${canLaunchBetaLoadout(state) ? '' : 'disabled'}>开始内测</button>
           <button class="secondary-action" data-action="close-beta-loadout">返回</button>
         </footer>
       </div>`;
@@ -669,6 +700,14 @@ export class HudController {
       return;
     }
 
+    if (button.dataset.skillPath) {
+      this.callbacks.onChooseSkillPath?.(button.dataset.skillPath as SkillPathKey);
+      return;
+    }
+    if (button.dataset.betaPath) {
+      this.callbacks.onSetBetaSkillPath?.(button.dataset.betaPath as SkillId, button.dataset.path as SkillPathKey);
+      return;
+    }
     const action = button.dataset.action;
     const upgrade = button.dataset.upgrade as UpgradeChoice | undefined;
     const treasure = button.dataset.treasure as UpgradeId | undefined;

@@ -1325,3 +1325,20 @@ button {
     font-size: 34px;
   }
 }
+.skill-path-panel {
+  top: 8px;
+  width: min(920px, calc(100% - 24px));
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  transform: translateX(-50%);
+}
+.skill-path-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.skill-path-grid .upgrade { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.skill-path-grid strong { font-size: 24px; overflow-wrap: anywhere; }
+.skill-path-grid small { text-align: left; line-height: 1.5; }
+@media (max-width: 760px) {
+  .skill-path-grid { grid-template-columns: minmax(0, 1fr); }
+  .skill-path-panel h2 { font-size: 28px; }
+}
+.beta-route-options { display: flex; flex-wrap: wrap; gap: 4px; }
+.beta-route-options button { min-width: 0; flex: 1; overflow-wrap: anywhere; }

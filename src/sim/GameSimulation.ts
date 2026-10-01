@@ -33,6 +33,8 @@ import {
   recalculatePlayerBuild,
 } from './loadout';
 import { getUpgradeKind } from './upgradeCatalog';
+import { clearSkillPath, getSkillPathDefinition, needsSkillPath, type SkillId, type SkillPathKey } from './skillPaths';
+import { SkillPathRuntime } from './skillPathRuntime';
 import { getAwakenedSkills, isUpgradeAwakened } from './awakening';
 import { hasSynergy } from './synergies';
 import { createEliteSquadBlueprint } from './eliteSquads';
@@ -68,6 +70,14 @@ export class GameSimulation {
   public readonly state: GameState;
   private events: CombatEvent[] = [];
   private thunderSynergyTimerMs = 0;
+  private readonly skillPathRuntime = new SkillPathRuntime();
+  private readonly thunderPathTimers = new WeakMap<Player, number>();
+  private pendingSurgePlayer: Player | null = null;
+  private thunderPathWaves: Array<{
+    player: Player; x: number; y: number; radius: number; previousRadius: number;
+    maximumRadius: number; returning: boolean; returnLeg: boolean;
+    hitIds: Set<number>; delayMs: number; newlyCreated: boolean;
+  }> = [];
 
   public constructor(state: GameState) {
     this.state = state;
@@ -129,7 +139,7 @@ export class GameSimulation {
       lastMoveDirection: { ...player.lastMoveDirection },
       equippedSkills: [],
       equippedEnhancements: [],
-      skillPaths: { ...player.skillPaths },
+      skillPaths: {},
       skillSlotLimit: 4,
       enhancementSlotLimit: 4,
       upgradeChoiceSalt: 0x9e3779b9,
@@ -243,13 +253,23 @@ export class GameSimulation {
         this.state.awakeningNotice = null;
         this.state.pendingAwakeningSurge = null;
         if (upgrade) {
-          this.triggerAwakeningSurge(upgrade);
+          this.triggerAwakeningSurge(upgrade, this.pendingSurgePlayer ?? this.state.player);
         }
+        this.pendingSurgePlayer = null;
+        this.showNextCoopUpgradeOrResume();
       }
       return;
     }
     if (this.state.phase !== 'playing') {
       return;
+    }
+    for (const [playerId, player] of [['p1', this.state.player], ['p2', this.state.partner]] as const) {
+      const skill = player?.equippedSkills.find((id) => getUpgradeKind(id) === 'skill' && needsSkillPath(player, id as SkillId));
+      if (skill) {
+        this.state.pendingSkillPath = { playerId, skill: skill as SkillId, resumePhase: 'playing' };
+        this.state.phase = 'skill-path-choice';
+        return;
+      }
     }
     const resolvedInput: SimulationInput = 'move' in input
       ? input
@@ -332,6 +352,7 @@ export class GameSimulation {
       () => this.takeId(),
     ));
     this.applyThunderRing(deltaMs);
+    this.updateThunderPaths(deltaMs);
     this.applyOrbitingBlades(deltaMs);
     this.castMeteors(deltaMs);
     this.moveProjectiles(deltaMs);
@@ -349,6 +370,12 @@ export class GameSimulation {
       this.castFrostDomain(this.state.partner, deltaMs);
       this.castRiftReturn(this.state.partner, deltaMs);
       this.castStarPull(this.state.partner, deltaMs);
+    }
+    for (const player of [this.state.player, ...(this.state.partner ? [this.state.partner] : [])]) {
+      const downed = player === this.state.player ? this.state.playerDowned : this.state.partner?.downed;
+      if (downed) continue;
+      this.skillPathRuntime.update({ state: this.state, player, deltaMs, events: this.events,
+        damage: (enemy, amount, source) => this.dealDamage(enemy, amount, source, player) });
     }
     this.castAwakeningGlyphs(deltaMs);
     if (!this.state.playerDowned) this.fireAtNearestEnemy(this.state.player);
@@ -430,9 +457,33 @@ export class GameSimulation {
     const result = applyUpgrade(this.state, upgrade, player);
     const newlyAwakenedSkill = getAwakenedSkills(player).find((skill) => !awakenedBefore.has(skill));
     this.state.upgradeChoices = [];
+    if (getUpgradeKind(upgrade) === 'skill' && needsSkillPath(player, upgrade as SkillId)) {
+      this.state.pendingSkillPath = {
+        playerId: this.state.pendingUpgradePlayerId,
+        skill: upgrade as SkillId,
+        resumePhase: this.state.coopUpgradeQueue.length > 0 ? 'upgrade' : 'playing',
+      };
+      this.state.phase = 'skill-path-choice';
+      return;
+    }
     const awakeningUpgrade = newlyAwakenedSkill ?? (result.awakened ? upgrade : null);
-    if (awakeningUpgrade && player === this.state.player) {
-      this.beginAwakening(awakeningUpgrade);
+    if (awakeningUpgrade) {
+      this.beginAwakening(awakeningUpgrade, player);
+    } else {
+      this.showNextCoopUpgradeOrResume();
+    }
+  }
+
+  public chooseSkillPath(key: SkillPathKey): void {
+    const pending = this.state.pendingSkillPath;
+    if (this.state.phase !== 'skill-path-choice' || !pending || (key !== 'a' && key !== 'b')) return;
+    const player = pending.playerId === 'p2' ? this.state.partner : this.state.player;
+    if (!player || !player.equippedSkills.includes(pending.skill) || !needsSkillPath(player, pending.skill)) return;
+    player.skillPaths[pending.skill] = key;
+    recalculatePlayerBuild(player);
+    this.state.pendingSkillPath = null;
+    if (isUpgradeAwakened(player, pending.skill)) {
+      this.beginAwakening(pending.skill, player);
     } else {
       this.showNextCoopUpgradeOrResume();
     }
@@ -573,6 +624,11 @@ export class GameSimulation {
     const newlyAwakenedSkill = getAwakenedSkills(player).find((skill) => !awakenedBefore.has(skill));
     this.state.treasureChoices = [];
     this.state.treasureWave = null;
+    if (kind === 'skill' && needsSkillPath(player, upgrade as SkillId)) {
+      this.state.pendingSkillPath = { playerId: 'p1', skill: upgrade as SkillId, resumePhase: 'playing' };
+      this.state.phase = 'skill-path-choice';
+      return;
+    }
     const awakeningUpgrade = newlyAwakenedSkill ?? (result.awakened ? upgrade : null);
     if (awakeningUpgrade) {
       this.beginAwakening(awakeningUpgrade);
@@ -597,6 +653,7 @@ export class GameSimulation {
     }
     const awakenedBefore = new Set(getAwakenedSkills(player));
     const removed = equipped[slotIndex];
+    if (getUpgradeKind(removed) === 'skill') clearSkillPath(player, removed as SkillId);
     player.upgradeLevels[removed] = 0;
     player.upgradeLevels[pending] = 1;
     equipped[slotIndex] = pending;
@@ -1267,6 +1324,72 @@ export class GameSimulation {
     return true;
   }
 
+  private updateThunderPaths(deltaMs: number): void {
+    const players = [this.state.player, ...(this.state.partner ? [this.state.partner] : [])];
+    for (const player of players) {
+      const downed = player === this.state.player ? this.state.playerDowned : this.state.partner?.downed;
+      const path = player.skillPaths['thunder-ring'];
+      const level = player.upgradeLevels['thunder-ring'];
+      if (downed || level < 3 || (path !== 'a' && path !== 'b')) {
+        this.thunderPathTimers.delete(player);
+        continue;
+      }
+      const cooldown = (level >= 4 ? 1500 : 2000) * (1 - player.skillCooldownReduction);
+      const timer = (this.thunderPathTimers.get(player) ?? 0) + deltaMs;
+      this.thunderPathTimers.set(player, timer % cooldown);
+      if (timer < cooldown) continue;
+      const awakened = isUpgradeAwakened(player, 'thunder-ring');
+      if (path === 'a') {
+        const radius = player.thunderRadius + (level >= 5 ? 36 : 0);
+        for (const enemy of this.state.enemies) {
+          if (enemy.hp <= 0 || distance(enemy, player) > radius || enemy.kind === 'boss') continue;
+          const direction = normalize({ x: enemy.x - player.x, y: enemy.y - player.y });
+          const knockback = level >= 5 ? 48 : 30;
+          enemy.x = clamp(enemy.x + direction.x * knockback, enemy.radius, this.state.arena.width - enemy.radius);
+          enemy.y = clamp(enemy.y + direction.y * knockback, enemy.radius, this.state.arena.height - enemy.radius);
+          if (awakened && enemy.eliteAffix) {
+            enemy.freezeUntilMs = Math.max(enemy.freezeUntilMs, this.state.elapsedMs + 400);
+            enemy.rangedTelegraphing = false;
+            enemy.rangedAttackTimerMs = 0;
+          }
+        }
+        this.events.push({ type: 'thunder-path-wave', x: player.x, y: player.y, radius, path, returning: false, durationMs: 400 });
+      } else {
+        const maximumRadius = player.thunderRadius + (level >= 4 ? 170 : 120);
+        for (let i = 0; i < (level >= 5 ? 2 : 1); i++) {
+          this.thunderPathWaves.push({ player, x: player.x, y: player.y, radius: 0, previousRadius: 0,
+            maximumRadius, returning: awakened, returnLeg: false, hitIds: new Set(), delayMs: i * 150, newlyCreated: true });
+        }
+      }
+    }
+    this.thunderPathWaves = this.thunderPathWaves.filter((wave) => {
+      const player = wave.player;
+      if (player.skillPaths['thunder-ring'] !== 'b' || player.upgradeLevels['thunder-ring'] < 3) return false;
+      if (wave.delayMs > 0) { wave.delayMs -= deltaMs; return true; }
+      const stepMs = wave.newlyCreated ? Math.min(deltaMs, 50) : deltaMs;
+      wave.newlyCreated = false;
+      if (wave.previousRadius === 0 && wave.radius === 0) this.events.push({ type: 'thunder-path-wave',
+        x: wave.x, y: wave.y, radius: wave.maximumRadius, path: 'b', returning: wave.returning,
+        durationMs: wave.maximumRadius / 0.8 * (wave.returning ? 2 : 1) });
+      wave.previousRadius = wave.radius;
+      wave.radius = clamp(wave.radius + (wave.returnLeg ? -1 : 1) * stepMs * 0.8, 0, wave.maximumRadius);
+      for (const enemy of this.state.enemies) {
+        const d = distance(enemy, wave);
+        if (enemy.hp <= 0 || wave.hitIds.has(enemy.id)
+          || d < Math.min(wave.previousRadius, wave.radius) - enemy.radius
+          || d > Math.max(wave.previousRadius, wave.radius) + enemy.radius) continue;
+        wave.hitIds.add(enemy.id);
+        this.dealDamage(enemy, player.thunderDamagePerSecond * 0.75 * player.arcaneDamageMultiplier, 'thunder', player);
+      }
+      if (wave.radius >= wave.maximumRadius) {
+        if (!wave.returning) return false;
+        wave.returnLeg = true;
+        wave.hitIds.clear();
+      }
+      return !(wave.returnLeg && wave.radius <= 0);
+    });
+  }
+
   private applyThunderRing(deltaMs: number): void {
     if (this.state.player.thunderRadius <= 0) {
       return;
@@ -1410,7 +1533,8 @@ export class GameSimulation {
       this.state.enemyProjectiles = this.state.enemyProjectiles.filter((bullet) => distance(bullet, player) > 190);
       for (const bullet of bullets) {
         this.state.runStats.bulletsBlocked += 1;
-        this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: 'barrier' });
+        this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: 'barrier',
+          playerId: player === this.state.partner ? 'p2' : 'p1', bulletId: bullet.id, vx: bullet.vx, vy: bullet.vy });
       }
       player.shield = Math.min(player.maxShield, player.shield + 5);
       return 'ward';
@@ -1438,7 +1562,8 @@ export class GameSimulation {
       if (bulletIndex >= 0) {
         const [bullet] = this.state.enemyProjectiles.splice(bulletIndex, 1);
         this.state.runStats.bulletsBlocked += 1;
-        this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: 'barrier' });
+        this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: 'barrier',
+          playerId: player === this.state.partner ? 'p2' : 'p1', bulletId: bullet.id, vx: bullet.vx, vy: bullet.vy });
       }
       player.shield = Math.min(player.maxShield, player.shield + 3);
       return 'ward';
@@ -1472,12 +1597,13 @@ export class GameSimulation {
         targetId: target.id,
         x: player.x,
         y: player.y,
+        playerId: player === this.state.partner ? 'p2' : 'p1',
         vx: Math.cos(angle) * PROJECTILE_SPEED,
         vy: Math.sin(angle) * PROJECTILE_SPEED,
         radius: 7,
         damage: player.attackDamage,
         ttlMs: PROJECTILE_TTL_MS,
-        pierceRemaining: this.state.player.projectilePierce,
+        pierceRemaining: player.projectilePierce,
         hitEnemyIds: [],
       });
       this.events.push({
@@ -1503,16 +1629,18 @@ export class GameSimulation {
         .sort((a, b) => distance(previous, a) - distance(previous, b));
 
       for (const enemy of hitCandidates) {
+        const owner = projectile.playerId === 'p2' ? this.state.partner ?? this.state.player : this.state.player;
         const source = projectile.source ?? (projectile.kind === 'star' ? 'north-star' : 'flying-sword');
         this.dealDamage(
           enemy,
           projectile.damage,
           source,
+          owner,
         );
         projectile.hitEnemyIds.push(enemy.id);
         this.events.push({ type: 'projectile-hit', x: enemy.x, y: enemy.y });
         if (source === 'flying-sword') this.triggerThunderSeal(enemy);
-        this.applyOnHitEffects(enemy);
+        if (!projectile.derived) this.applyOnHitEffects(enemy, owner);
         if (projectile.pierceRemaining <= 0) {
           projectile.ttlMs = 0;
           break;
@@ -1534,8 +1662,7 @@ export class GameSimulation {
     this.fireNorthStarVolley(player.northStarShotCount);
   }
 
-  private fireNorthStarVolley(count: number): void {
-    const player = this.state.player;
+  private fireNorthStarVolley(count: number, player = this.state.player): void {
     for (let index = 0; index < count; index += 1) {
       const ringOffset = index >= 8 ? Math.PI / 8 : 0;
       const angle = (index % 8) * Math.PI / 4 + ringOffset;
@@ -1553,6 +1680,7 @@ export class GameSimulation {
         hitEnemyIds: [],
         kind: 'star',
         source: 'north-star',
+        playerId: player === this.state.partner ? 'p2' : 'p1',
       });
     }
     this.events.push({
@@ -1648,7 +1776,8 @@ export class GameSimulation {
         if (distance(bullet, player) > player.voidBellRadius) return true;
         this.state.runStats.bulletsBlocked += 1;
         brokenBullets += 1;
-        this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: 'barrier' });
+        this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: 'barrier',
+          playerId: player === this.state.partner ? 'p2' : 'p1', bulletId: bullet.id, vx: bullet.vx, vy: bullet.vy });
         return false;
       });
     }
@@ -1746,7 +1875,8 @@ export class GameSimulation {
       if (distance(bullet, player) > player.mirrorSigilRadius) return true;
       reflectedOwnerIds.add(bullet.ownerId);
       this.state.runStats.bulletsBlocked += 1;
-      this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: 'barrier' });
+      this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: 'barrier',
+        playerId: player === this.state.partner ? 'p2' : 'p1', bulletId: bullet.id, vx: bullet.vx, vy: bullet.vy });
       return false;
     });
     for (const ownerId of reflectedOwnerIds) {
@@ -1769,7 +1899,7 @@ export class GameSimulation {
     const awakened = isUpgradeAwakened(player, 'frost-domain');
     for (const enemy of this.state.enemies) {
       if (enemy.hp <= 0 || distance(enemy, player) > player.frostDomainRadius) continue;
-      this.dealDamage(enemy, player.frostDomainDamage, 'chain');
+      this.dealDamage(enemy, player.frostDomainDamage, 'chain', player);
       if (enemy.kind === 'boss') {
         enemy.slowMultiplier = Math.min(enemy.slowMultiplier, awakened ? 0.48 : 0.72);
         enemy.slowUntilMs = Math.max(enemy.slowUntilMs, this.state.elapsedMs + 1000);
@@ -1784,7 +1914,8 @@ export class GameSimulation {
       this.state.enemyProjectiles = this.state.enemyProjectiles.filter((bullet) => {
         if (distance(bullet, player) > player.frostDomainRadius) return true;
         this.state.runStats.bulletsBlocked += 1;
-        this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: 'barrier' });
+        this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: 'barrier',
+          playerId: player === this.state.partner ? 'p2' : 'p1', bulletId: bullet.id, vx: bullet.vx, vy: bullet.vy });
         return false;
       });
     }
@@ -1801,15 +1932,15 @@ export class GameSimulation {
       .sort((left, right) => distance(left, player) - distance(right, player))[0];
     if (!target) return;
     const awakened = player.riftReturnEchoes > 0;
-    this.dealDamage(target, player.riftReturnDamage, 'sword-rain');
+    this.dealDamage(target, player.riftReturnDamage, 'sword-rain', player);
     this.events.push({ type: 'rift-return', fromX: player.x, fromY: player.y, toX: target.x, toY: target.y, awakened: false });
-    this.dealDamage(target, player.riftReturnDamage, 'sword-rain');
+    this.dealDamage(target, player.riftReturnDamage, 'sword-rain', player);
     this.events.push({ type: 'rift-return', fromX: target.x, fromY: target.y, toX: player.x, toY: player.y, awakened });
     if (awakened) {
       const echoes = this.state.enemies.filter((enemy) => enemy.hp > 0 && enemy.id !== target.id && distance(enemy, target) <= 180)
         .sort((left, right) => distance(left, target) - distance(right, target)).slice(0, player.riftReturnEchoes);
       for (const echo of echoes) {
-        this.dealDamage(echo, player.riftReturnDamage * 0.7, 'sword-rain');
+        this.dealDamage(echo, player.riftReturnDamage * 0.7, 'sword-rain', player);
         this.events.push({ type: 'rift-return', fromX: player.x, fromY: player.y, toX: echo.x, toY: echo.y, awakened: true });
       }
     }
@@ -1835,13 +1966,14 @@ export class GameSimulation {
         enemy.x += direction.x * player.starPullForce;
         enemy.y += direction.y * player.starPullForce;
       }
-      this.dealDamage(enemy, player.starPullDamage, 'meteor');
+      this.dealDamage(enemy, player.starPullDamage, 'meteor', player);
     }
     if (awakened) {
       this.state.enemyProjectiles = this.state.enemyProjectiles.filter((bullet) => {
         if (distance(bullet, center) > 28) return true;
         this.state.runStats.bulletsBlocked += 1;
-        this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: 'barrier' });
+        this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by: 'barrier',
+          playerId: player === this.state.partner ? 'p2' : 'p1', bulletId: bullet.id, vx: bullet.vx, vy: bullet.vy });
         return false;
       });
     }
@@ -2157,46 +2289,50 @@ export class GameSimulation {
     this.state.phase = 'treasure';
   }
 
-  private applyOnHitEffects(primary: Enemy): void {
-    const soulExecution = primary.kind === 'boss' && hasSynergy(this.state.player, 'soul-execution');
-    const soulPinChance = this.state.player.soulPinChance + (soulExecution ? 0.18 : 0);
+  private applyOnHitEffects(primary: Enemy, player = this.state.player): void {
+    const trigger = (skill: SkillId) => this.events.push({ type: 'skill-path-trigger', skill,
+      playerId: player === this.state.partner ? 'p2' : 'p1', targetId: primary.id, x: primary.x, y: primary.y });
+    const soulExecution = primary.kind === 'boss' && hasSynergy(player, 'soul-execution');
+    const soulPinChance = player.soulPinChance + (soulExecution ? 0.18 : 0);
     if (soulPinChance > 0 && this.nextRandom() < soulPinChance) {
       const away = normalize({
-        x: primary.x - this.state.player.x,
-        y: primary.y - this.state.player.y,
+        x: primary.x - player.x,
+        y: primary.y - player.y,
       });
-      primary.x += away.x * this.state.player.soulPinKnockback;
-      primary.y += away.y * this.state.player.soulPinKnockback;
+      primary.x += away.x * player.soulPinKnockback;
+      primary.y += away.y * player.soulPinKnockback;
       if (primary.kind === 'normal') {
         primary.freezeUntilMs = Math.max(
           primary.freezeUntilMs,
-          this.state.elapsedMs + this.state.player.soulPinRootMs,
+          this.state.elapsedMs + player.soulPinRootMs,
         );
       } else {
         primary.slowMultiplier = Math.min(primary.slowMultiplier, 0.7);
-        primary.slowUntilMs = this.state.elapsedMs + this.state.player.soulPinRootMs;
+        primary.slowUntilMs = this.state.elapsedMs + player.soulPinRootMs;
       }
       this.events.push({ type: 'soul-pinned', x: primary.x, y: primary.y, awakened: false });
+      trigger('soul-pin');
       if (soulExecution) {
-        this.dealDamage(primary, this.state.player.attackDamage * 4, 'soul');
+        this.dealDamage(primary, player.attackDamage * 4, 'soul', player);
         primary.bossSkillTimerMs = 0;
         primary.bossSecondaryTimerMs = 0;
         this.state.bossHazards = this.state.bossHazards.filter((hazard) => hazard.ownerBossId !== primary.id);
         this.events.push({ type: 'synergy-triggered', x: primary.x, y: primary.y, synergy: 'soul-execution' });
       }
     }
-    if (this.state.player.frostSlowPercent > 0) {
+    if (player.frostSlowPercent > 0) {
+      trigger('frost-seal');
       const bossSlowScale = primary.kind === 'boss' ? 0.5 : 1;
-      primary.slowMultiplier = 1 - this.state.player.frostSlowPercent * bossSlowScale;
+      primary.slowMultiplier = 1 - player.frostSlowPercent * bossSlowScale;
       primary.slowUntilMs = Math.max(primary.slowUntilMs, this.state.elapsedMs + 1500);
       let frozen = false;
       if (
         primary.kind === 'normal' &&
-        this.state.player.frostFreezeMs > 0 &&
+        player.frostFreezeMs > 0 &&
         this.state.elapsedMs >= primary.nextFreezeAllowedMs
       ) {
         primary.freezeUntilMs = this.state.elapsedMs
-          + this.state.player.frostFreezeMs * TRIBULATION_MODIFIERS[this.state.tribulation].freezeDuration;
+          + player.frostFreezeMs * TRIBULATION_MODIFIERS[this.state.tribulation].freezeDuration;
         primary.nextFreezeAllowedMs = this.state.elapsedMs + 4000;
         frozen = true;
       }
@@ -2204,41 +2340,43 @@ export class GameSimulation {
       if (frozen) this.createFrostSealMirror(primary);
     }
 
-    if (this.state.player.chainLightningDamage > 0) {
+    if (player.chainLightningDamage > 0) {
+      trigger('chain-lightning');
       const chained = this.state.enemies
         .filter((enemy) => enemy.id !== primary.id && enemy.hp > 0)
         .filter((enemy) => distance(enemy, primary) <= 150)
         .sort((a, b) => distance(a, primary) - distance(b, primary))
-        .slice(0, this.state.player.chainLightningTargets + (this.hasObjectiveField('thunder-pillar') ? 1 : 0));
+        .slice(0, player.chainLightningTargets + (this.hasObjectiveField('thunder-pillar') ? 1 : 0));
       for (const target of chained) {
-        this.dealDamage(target, this.state.player.chainLightningDamage, 'chain');
+        this.dealDamage(target, player.chainLightningDamage, 'chain', player);
         this.events.push({
           type: 'chain-lightning',
           fromX: primary.x,
           fromY: primary.y,
           toX: target.x,
           toY: target.y,
-          awakened: isUpgradeAwakened(this.state.player, 'chain-lightning'),
+          awakened: isUpgradeAwakened(player, 'chain-lightning'),
         });
       }
     }
 
     if (
-      this.state.player.fireBurstDamage > 0 &&
-      this.nextRandom() < this.state.player.fireBurstChance
+      player.fireBurstDamage > 0 &&
+      this.nextRandom() < player.fireBurstChance
     ) {
-      const frostfire = hasSynergy(this.state.player, 'frostfire-calamity')
+      trigger('fire-burst');
+      const frostfire = hasSynergy(player, 'frostfire-calamity')
         && (primary.slowUntilMs > this.state.elapsedMs || primary.freezeUntilMs > this.state.elapsedMs);
-      const radius = this.state.player.fireBurstRadius + (frostfire ? 60 : 0);
-      const fireDamage = this.state.player.fireBurstDamage * (frostfire ? 2.1 : 1);
+      const radius = player.fireBurstRadius + (frostfire ? 60 : 0);
+      const fireDamage = player.fireBurstDamage * (frostfire ? 2.1 : 1);
       for (const enemy of this.state.enemies) {
         if (distance(enemy, primary) <= radius) {
-          this.dealDamage(enemy, fireDamage, 'fire');
+          this.dealDamage(enemy, fireDamage, 'fire', player);
         }
       }
       this.events.push({
         type: 'fire-burst', x: primary.x, y: primary.y, radius,
-        awakened: isUpgradeAwakened(this.state.player, 'fire-burst'),
+        awakened: isUpgradeAwakened(player, 'fire-burst'),
       });
       if (frostfire) {
         for (const enemy of this.state.enemies) {
@@ -2320,35 +2458,37 @@ export class GameSimulation {
     this.removeDeadEnemies();
   }
 
-  private beginAwakening(upgrade: UpgradeId): void {
+  private beginAwakening(upgrade: UpgradeId, player = this.state.player): void {
     const label = UPGRADE_LABELS[upgrade];
+    const key = player.skillPaths[upgrade as SkillId];
+    const route = getUpgradeKind(upgrade) === 'skill' && key ? getSkillPathDefinition(upgrade as SkillId, key) : null;
     this.state.awakeningNotice = {
       upgrade,
       skillName: label.name,
-      awakeningName: label.awakeningName,
-      summary: label.awakeningSummary,
+      awakeningName: route?.awakeningNameZh ?? label.awakeningName,
+      summary: route ? [route.coreZh, route.level4Zh, route.level5Zh] : label.awakeningSummary,
     };
     this.state.awakeningRemainingMs = 1500;
     this.state.pendingAwakeningSurge = upgrade;
+    this.pendingSurgePlayer = player;
     this.state.phase = 'awakening';
     this.events.push({
       type: 'skill-awakened',
-      x: this.state.player.x,
-      y: this.state.player.y,
+      x: player.x,
+      y: player.y,
       upgrade,
     });
   }
 
-  private triggerAwakeningSurge(upgrade: UpgradeId): void {
+  private triggerAwakeningSurge(upgrade: UpgradeId, player = this.state.player): void {
     if (getUpgradeKind(upgrade) !== 'skill') return;
-    const player = this.state.player;
     const targetsByDistance = () => this.state.enemies
       .filter((enemy) => enemy.hp > 0)
       .sort((a, b) => distance(a, player) - distance(b, player));
     const damageAroundPlayer = (radius: number, damage: number, source: DamageSource) => {
       for (const enemy of this.state.enemies) {
         if (enemy.hp > 0 && distance(enemy, player) <= radius) {
-          this.dealDamage(enemy, damage, source);
+          this.dealDamage(enemy, damage, source, player);
         }
       }
     };
@@ -2356,7 +2496,8 @@ export class GameSimulation {
       this.state.enemyProjectiles = this.state.enemyProjectiles.filter((bullet) => {
         if (distance(bullet, player) > radius) return true;
         this.state.runStats.bulletsBlocked += 1;
-        this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by });
+        this.events.push({ type: 'enemy-bullet-broken', x: bullet.x, y: bullet.y, by,
+          playerId: player === this.state.partner ? 'p2' : 'p1', bulletId: bullet.id, vx: bullet.vx, vy: bullet.vy });
         return false;
       });
     };
@@ -2383,7 +2524,7 @@ export class GameSimulation {
         for (let index = 0; index < targets.length; index += 1) {
           const previous = targets[index - 1] ?? player;
           const target = targets[index];
-          this.dealDamage(target, player.chainLightningDamage * 1.5, 'chain');
+          this.dealDamage(target, player.chainLightningDamage * 1.5, 'chain', player);
           this.events.push({ type: 'chain-lightning', fromX: previous.x, fromY: previous.y, toX: target.x, toY: target.y });
         }
         break;
@@ -2407,12 +2548,12 @@ export class GameSimulation {
         break;
       case 'meteor-seal':
         for (const target of targetsByDistance().slice(0, 6)) {
-          this.dealDamage(target, player.meteorDamage * 1.7, 'meteor');
+          this.dealDamage(target, player.meteorDamage * 1.7, 'meteor', player);
           this.events.push({ type: 'meteor-strike', x: target.x, y: target.y, damage: player.meteorDamage * 1.7 });
         }
         break;
       case 'north-star':
-        this.fireNorthStarVolley(player.northStarShotCount);
+        this.fireNorthStarVolley(player.northStarShotCount, player);
         break;
       case 'bullet-reprisal':
         clearBullets(player.bulletReprisalRadius + 100, 'barrier');
@@ -2424,7 +2565,7 @@ export class GameSimulation {
         break;
       case 'solar-ray':
         for (const target of targetsByDistance().slice(0, 3)) {
-          this.dealDamage(target, player.solarRayDamage * 1.5, 'solar-ray');
+          this.dealDamage(target, player.solarRayDamage * 1.5, 'solar-ray', player);
           this.events.push({ type: 'chain-lightning', fromX: player.x, fromY: player.y, toX: target.x, toY: target.y });
         }
         break;
@@ -2437,7 +2578,7 @@ export class GameSimulation {
         const targets = targetsByDistance();
         for (let index = 0; index < player.swordRainCount * 2 && targets.length > 0; index += 1) {
           const target = targets[index % targets.length];
-          this.dealDamage(target, player.swordRainDamage * 1.3, 'sword-rain');
+          this.dealDamage(target, player.swordRainDamage * 1.3, 'sword-rain', player);
           this.events.push({ type: 'meteor-strike', x: target.x, y: target.y, damage: player.swordRainDamage * 1.3 });
         }
         break;
@@ -2450,13 +2591,15 @@ export class GameSimulation {
     enemy: Enemy,
     damage: number,
     source: DamageSource = 'flying-sword',
+    player = this.state.player,
   ): void {
     if (enemy.kind === 'boss' && (enemy.bossArenaVulnerableUntilMs ?? 0) > this.state.elapsedMs) {
       damage *= 1.25;
     }
-    const dealt = dealPlayerDamage(this.state, enemy, damage, source);
+    const dealt = dealPlayerDamage(this.state, enemy, damage, source, player);
     if (dealt >= 1) {
-      this.events.push({ type: 'damage-dealt', x: enemy.x, y: enemy.y, amount: dealt, source });
+      this.events.push({ type: 'damage-dealt', x: enemy.x, y: enemy.y, amount: dealt, source, targetId: enemy.id,
+        burst: source === 'active' || enemy.bossBreakOwnerId !== undefined });
     }
   }
 

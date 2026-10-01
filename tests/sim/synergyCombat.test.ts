@@ -25,6 +25,7 @@ describe('synergy combat effects', () => {
 
   it('expands and strengthens fire bursts against frost-controlled targets', () => {
     const state = createDefaultState();
+    state.player.skillPaths['fire-burst'] = 'a';
     for (let level = 0; level < 6; level += 1) applyUpgrade(state, 'fire-burst');
     applyUpgrade(state, 'frost-seal');
     state.spawnTimerMs = -100_000;
@@ -119,6 +120,7 @@ describe('synergy combat effects', () => {
 
   it('raises soul-pin chance against bosses and deals execution damage', () => {
     const state = createDefaultState();
+    state.player.skillPaths['soul-pin'] = 'a';
     for (let level = 0; level < 6; level += 1) applyUpgrade(state, 'soul-pin');
     applyUpgrade(state, 'boss-slayer');
     state.randomState = 0;
